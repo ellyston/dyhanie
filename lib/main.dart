@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:async';
+import 'dart:io';
 
 void main() {
   runApp(const MyApp());
@@ -45,21 +47,30 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   List<ChatMessage> messages = [];
+  final ImagePicker _picker = ImagePicker();
 
   int selectedTime = 5;
   double fontSize = 16;
   Color myBubbleColor = Colors.white.withValues(alpha: 0.15);
   Color otherBubbleColor = Colors.white.withValues(alpha: 0.08);
+  
+  File? backgroundImageFile; // своя картинка с телефона
   String? backgroundImageUrl;
   Color backgroundColor = const Color(0xFF0A0A0A);
 
-  final List<Map<String, dynamic>> backgroundOptions = [
-    {'name': 'Чёрный', 'color': Color(0xFF0A0A0A)},
-    {'name': 'Тёмно-синий', 'color': Color(0xFF0B1220)},
-    {'name': 'Ночной лес', 'url': 'https://images.unsplash.com/photo-1511497584788-876760111969?w=800'},
-    {'name': 'Туман', 'url': 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800'},
-    {'name': 'Звёзды', 'url': 'https://images.unsplash.com/photo-1419242902214-272b3f66ee70?w=800'},
-  ];
+  Future<void> _pickBackgroundImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        setState(() {
+          backgroundImageFile = File(image.path);
+          backgroundImageUrl = null; // сбрасываем сетевую картинку
+        });
+      }
+    } catch (e) {
+      print('Ошибка выбора изображения: $e');
+    }
+  }
 
   void _vibrate() {
     HapticFeedback.lightImpact();
@@ -144,6 +155,20 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     const Text('Настройки', style: TextStyle(color: Colors.white, fontSize: 20)),
                     const SizedBox(height: 20),
+
+                    // Кнопка выбора своей картинки
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.image, color: Colors.white70),
+                      title: const Text('Своя картинка на фон', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Выбрать из галереи', style: TextStyle(color: Colors.white54)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _pickBackgroundImage();
+                      },
+                    ),
+
+                    const SizedBox(height: 10),
                     const Text('Время исчезновения', style: TextStyle(color: Colors.white70)),
                     const SizedBox(height: 8),
                     Wrap(
@@ -161,6 +186,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         );
                       }).toList(),
                     ),
+
                     const SizedBox(height: 20),
                     const Text('Размер шрифта', style: TextStyle(color: Colors.white70)),
                     Slider(
@@ -174,38 +200,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         setModalState(() {});
                       },
                     ),
-                    const SizedBox(height: 16),
-                    const Text('Фон', style: TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: backgroundOptions.map((option) {
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              if (option.containsKey('url')) {
-                                backgroundImageUrl = option['url'];
-                                backgroundColor = Colors.black;
-                              } else {
-                                backgroundImageUrl = null;
-                                backgroundColor = option['color'];
-                              }
-                            });
-                            setModalState(() {});
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.white12,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(option['name'], style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 40),
+
+                    const SizedBox(height: 30),
                   ],
                 ),
               ),
@@ -273,13 +269,19 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Container(
         decoration: BoxDecoration(
           color: backgroundColor,
-          image: backgroundImageUrl != null
+          image: backgroundImageFile != null
               ? DecorationImage(
-                  image: NetworkImage(backgroundImageUrl!),
+                  image: FileImage(backgroundImageFile!),
                   fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.55), BlendMode.darken),
+                  colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.5), BlendMode.darken),
                 )
-              : null,
+              : backgroundImageUrl != null
+                  ? DecorationImage(
+                      image: NetworkImage(backgroundImageUrl!),
+                      fit: BoxFit.cover,
+                      colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.55), BlendMode.darken),
+                    )
+                  : null,
         ),
         child: Scaffold(
           backgroundColor: Colors.transparent,
@@ -317,7 +319,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       key: UniqueKey(),
                       direction: DismissDirection.horizontal,
                       onDismissed: (_) => _deleteMessage(message),
-                      background: Container(color: Colors.transparent),
                       child: AnimatedOpacity(
                         opacity: message.isDisappearing ? 0.0 : 1.0,
                         duration: const Duration(milliseconds: 600),
