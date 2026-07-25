@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 import '../models/vpn_config.dart';
 import '../services/vpn_storage_service.dart';
 
@@ -36,6 +40,7 @@ class _VpnScreenState extends State<VpnScreen> {
     await _loadConfigs();
   }
 
+  // ==================== ДОБАВЛЕНИЕ ВРУЧНУЮ ====================
   void _showAddConfigDialog() {
     final nameController = TextEditingController();
     final configController = TextEditingController();
@@ -63,10 +68,7 @@ class _VpnScreenState extends State<VpnScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Добавить конфигурацию',
-                      style: TextStyle(color: Colors.white, fontSize: 20),
-                    ),
+                    const Text('Добавить конфигурацию', style: TextStyle(color: Colors.white, fontSize: 20)),
                     const SizedBox(height: 20),
                     TextField(
                       controller: nameController,
@@ -74,9 +76,7 @@ class _VpnScreenState extends State<VpnScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Название',
                         labelStyle: TextStyle(color: Colors.white54),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24),
-                        ),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -97,9 +97,7 @@ class _VpnScreenState extends State<VpnScreen> {
                           labelStyle: TextStyle(
                             color: selectedProtocol == protocol ? Colors.white : Colors.white70,
                           ),
-                          onSelected: (_) {
-                            setModalState(() => selectedProtocol = protocol);
-                          },
+                          onSelected: (_) => setModalState(() => selectedProtocol = protocol),
                         );
                       }).toList(),
                     ),
@@ -112,12 +110,8 @@ class _VpnScreenState extends State<VpnScreen> {
                         labelText: 'Конфиг (текст)',
                         labelStyle: TextStyle(color: Colors.white54),
                         alignLabelWithHint: true,
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white54),
-                        ),
+                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -125,15 +119,9 @@ class _VpnScreenState extends State<VpnScreen> {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
                         onPressed: () async {
-                          if (nameController.text.trim().isEmpty ||
-                              configController.text.trim().isEmpty) {
-                            return;
-                          }
+                          if (nameController.text.trim().isEmpty || configController.text.trim().isEmpty) return;
 
                           final newConfig = VpnConfig.create(
                             name: nameController.text.trim(),
@@ -159,6 +147,169 @@ class _VpnScreenState extends State<VpnScreen> {
     );
   }
 
+  // ==================== ИМПОРТ ИЗ ФАЙЛА ====================
+  Future<void> _importFromFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['conf', 'ovpn', 'txt', 'json'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      String content;
+
+      if (file.bytes != null) {
+        content = utf8.decode(file.bytes!);
+      } else {
+        return;
+      }
+
+      final name = file.name.replaceAll(RegExp(r'\.(conf|ovpn|txt|json)$'), '');
+
+      // Простое определение протокола
+      VpnProtocol protocol = VpnProtocol.wireguard;
+      if (content.contains('[Interface]') && content.contains('PrivateKey')) {
+        protocol = VpnProtocol.wireguard;
+      } else if (content.contains('client') || content.contains('remote ')) {
+        protocol = VpnProtocol.openvpn;
+      }
+
+      final newConfig = VpnConfig.create(
+        name: name,
+        protocol: protocol,
+        configData: content,
+      );
+
+      await _storageService.saveConfig(newConfig);
+      await _loadConfigs();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Конфиг успешно импортирован')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка импорта: $e')),
+        );
+      }
+    }
+  }
+
+  // ==================== ДОБАВЛЕНИЕ ПО ПОДПИСКЕ ====================
+  void _showAddSubscriptionDialog() {
+    final nameController = TextEditingController();
+    final urlController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 20,
+            right: 20,
+            top: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Добавить подписку', style: TextStyle(color: Colors.white, fontSize: 20)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: nameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Название',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: urlController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Ссылка на подписку',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                  onPressed: () async {
+                    final name = nameController.text.trim();
+                    final url = urlController.text.trim();
+                    if (name.isEmpty || url.isEmpty) return;
+
+                    Navigator.pop(context);
+                    await _importFromSubscription(name, url);
+                  },
+                  child: const Text('Добавить'),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _importFromSubscription(String name, String url) async {
+    try {
+      setState(() => _isLoading = true);
+
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200) {
+        throw Exception('Не удалось загрузить подписку');
+      }
+
+      String content = response.body;
+
+      // Пробуем декодировать base64 (часто подписки в base64)
+      try {
+        content = utf8.decode(base64.decode(content.trim()));
+      } catch (_) {}
+
+      final newConfig = VpnConfig.create(
+        name: name,
+        protocol: VpnProtocol.wireguard, // по умолчанию, можно доработать определение
+        configData: content,
+        subscriptionUrl: url,
+      );
+
+      await _storageService.saveConfig(newConfig);
+      await _loadConfigs();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Подписка успешно добавлена')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,9 +319,19 @@ class _VpnScreenState extends State<VpnScreen> {
         title: const Text('VPN', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
+          PopupMenuButton<String>(
             icon: const Icon(Icons.add, color: Colors.white),
-            onPressed: _showAddConfigDialog,
+            color: const Color(0xFF1A1A1A),
+            onSelected: (value) {
+              if (value == 'manual') _showAddConfigDialog();
+              if (value == 'file') _importFromFile();
+              if (value == 'subscription') _showAddSubscriptionDialog();
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'manual', child: Text('Вставить вручную', style: TextStyle(color: Colors.white))),
+              const PopupMenuItem(value: 'file', child: Text('Импорт из файла', style: TextStyle(color: Colors.white))),
+              const PopupMenuItem(value: 'subscription', child: Text('По ссылке (подписка)', style: TextStyle(color: Colors.white))),
+            ],
           ),
         ],
       ),
@@ -212,10 +373,7 @@ class _VpnScreenState extends State<VpnScreen> {
                             foregroundColor: _isConnected ? Colors.white : Colors.black,
                           ),
                           onPressed: () {
-                            // Пока просто переключаем статус (позже подключим реальный VPN)
-                            setState(() {
-                              _isConnected = !_isConnected;
-                            });
+                            setState(() => _isConnected = !_isConnected);
                             HapticFeedback.mediumImpact();
                           },
                           child: Text(_isConnected ? 'Отключиться' : 'Подключиться'),
@@ -229,10 +387,7 @@ class _VpnScreenState extends State<VpnScreen> {
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Сохранённые конфигурации',
-                      style: TextStyle(color: Colors.white54, fontSize: 14),
-                    ),
+                    child: Text('Сохранённые конфигурации', style: TextStyle(color: Colors.white54, fontSize: 14)),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -256,10 +411,7 @@ class _VpnScreenState extends State<VpnScreen> {
                             return Card(
                               color: Colors.white.withValues(alpha: 0.07),
                               child: ListTile(
-                                title: Text(
-                                  config.name,
-                                  style: const TextStyle(color: Colors.white),
-                                ),
+                                title: Text(config.name, style: const TextStyle(color: Colors.white)),
                                 subtitle: Text(
                                   config.protocol.name.toUpperCase(),
                                   style: const TextStyle(color: Colors.white54, fontSize: 12),
@@ -268,11 +420,7 @@ class _VpnScreenState extends State<VpnScreen> {
                                   icon: const Icon(Icons.delete_outline, color: Colors.white38),
                                   onPressed: () => _deleteConfig(config.id),
                                 ),
-                                onTap: () {
-                                  setState(() {
-                                    _activeConfigId = config.id;
-                                  });
-                                },
+                                onTap: () => setState(() => _activeConfigId = config.id),
                                 selected: isActive,
                               ),
                             );
