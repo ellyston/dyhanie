@@ -7,7 +7,7 @@ import 'dart:math';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   await Firebase.initializeApp(
     options: const FirebaseOptions(
       apiKey: "AIzaSyDUU45D-9Grs6uhD3FaqnEupc-j_lScp40",
@@ -19,7 +19,7 @@ void main() async {
       appId: "1:220279979423:web:1ce259ea4fbd6f372511aa",
     ),
   );
-  
+
   runApp(const MyApp());
 }
 
@@ -49,6 +49,10 @@ class HomeScreen extends StatelessWidget {
     ));
   }
 
+  String _generateUserId() {
+    return DateTime.now().millisecondsSinceEpoch.toString() + Random().nextInt(999).toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -74,8 +78,6 @@ class HomeScreen extends StatelessWidget {
                 style: TextStyle(color: Colors.white54, fontSize: 16),
               ),
               const SizedBox(height: 80),
-
-              // Создать комнату
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -83,26 +85,26 @@ class HomeScreen extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   onPressed: () {
                     final code = _generateRoomCode();
+                    final userId = _generateUserId();
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ChatScreen(roomCode: code, isCreator: true),
+                        builder: (_) => ChatScreen(
+                          roomCode: code,
+                          userId: userId,
+                          isCreator: true,
+                        ),
                       ),
                     );
                   },
                   child: const Text('Создать комнату', style: TextStyle(fontSize: 18)),
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              // Войти по коду
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -110,9 +112,7 @@ class HomeScreen extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: const BorderSide(color: Colors.white54),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   onPressed: () {
                     Navigator.push(
@@ -142,6 +142,10 @@ class JoinRoomScreen extends StatefulWidget {
 class _JoinRoomScreenState extends State<JoinRoomScreen> {
   final TextEditingController _codeController = TextEditingController();
 
+  String _generateUserId() {
+    return DateTime.now().millisecondsSinceEpoch.toString() + Random().nextInt(999).toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -159,19 +163,15 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
             TextField(
               controller: _codeController,
               textCapitalization: TextCapitalization.characters,
-              style: const TextStyle(color: Colors.white, fontSize: 24, letterSpacing: 8),
+              style: const TextStyle(color: Colors.white, fontSize: 28, letterSpacing: 10),
               textAlign: TextAlign.center,
               maxLength: 6,
               decoration: const InputDecoration(
                 hintText: 'КОД',
-                hintStyle: TextStyle(color: Colors.white30, letterSpacing: 8),
+                hintStyle: TextStyle(color: Colors.white30, letterSpacing: 10),
                 counterText: '',
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white),
-                ),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
               ),
             ),
             const SizedBox(height: 40),
@@ -182,17 +182,20 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
                 onPressed: () {
                   final code = _codeController.text.trim().toUpperCase();
                   if (code.length == 6) {
+                    final userId = _generateUserId();
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ChatScreen(roomCode: code, isCreator: false),
+                        builder: (_) => ChatScreen(
+                          roomCode: code,
+                          userId: userId,
+                          isCreator: false,
+                        ),
                       ),
                     );
                   }
@@ -210,9 +213,15 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
 // ===================== ЧАТ =====================
 class ChatScreen extends StatefulWidget {
   final String roomCode;
+  final String userId;
   final bool isCreator;
 
-  const ChatScreen({super.key, required this.roomCode, required this.isCreator});
+  const ChatScreen({
+    super.key,
+    required this.roomCode,
+    required this.userId,
+    required this.isCreator,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -223,7 +232,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
   List<Map<dynamic, dynamic>> messages = [];
   StreamSubscription? _messagesSubscription;
-  int selectedTime = 8;
+  int selectedTime = 30; // по умолчанию 30 секунд
+
+  final List<int> timeOptions = [5, 10, 15, 30, 60, 120, 300, 600]; // до 10 минут
 
   @override
   void initState() {
@@ -232,7 +243,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _listenMessages() {
-    _messagesSubscription = _db.child('rooms').child(widget.roomCode).child('messages').onValue.listen((event) {
+    _messagesSubscription = _db
+        .child('rooms')
+        .child(widget.roomCode)
+        .child('messages')
+        .onValue
+        .listen((event) {
       if (event.snapshot.value != null) {
         final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
         final list = data.entries.map((e) {
@@ -246,6 +262,16 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           messages = list;
         });
+
+        // Автоудаление просроченных сообщений
+        final now = DateTime.now().millisecondsSinceEpoch;
+        for (var msg in list) {
+          final created = msg['timestamp'] as int;
+          final ttl = (msg['ttl'] as int) * 1000;
+          if (now - created > ttl) {
+            _db.child('rooms').child(widget.roomCode).child('messages').child(msg['key']).remove();
+          }
+        }
       } else {
         setState(() {
           messages = [];
@@ -259,16 +285,63 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty) return;
 
     final newMessageRef = _db.child('rooms').child(widget.roomCode).child('messages').push();
-    
+
     newMessageRef.set({
       'text': text,
-      'isMe': true, // временно. Позже сделаем правильно
+      'userId': widget.userId,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'ttl': selectedTime,
     });
 
     _controller.clear();
     HapticFeedback.lightImpact();
+  }
+
+  void _openTimeSelector() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Время жизни сообщения', style: TextStyle(color: Colors.white, fontSize: 18)),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: timeOptions.map((sec) {
+                  String label;
+                  if (sec < 60) {
+                    label = '$sec сек';
+                  } else {
+                    label = '${sec ~/ 60} мин';
+                  }
+                  return ChoiceChip(
+                    label: Text(label),
+                    selected: selectedTime == sec,
+                    selectedColor: Colors.white24,
+                    labelStyle: TextStyle(
+                      color: selectedTime == sec ? Colors.white : Colors.white70,
+                    ),
+                    onSelected: (_) {
+                      setState(() => selectedTime = sec);
+                      Navigator.pop(context);
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -294,6 +367,12 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.timer, color: Colors.white70),
+            onPressed: _openTimeSelector,
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -303,14 +382,26 @@ class _ChatScreenState extends State<ChatScreen> {
               itemCount: messages.length,
               itemBuilder: (context, index) {
                 final msg = messages[index];
+                final isMe = msg['userId'] == widget.userId;
+
                 return Align(
-                  alignment: Alignment.centerRight,
+                  alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(18),
+                      color: isMe
+                          ? Colors.white.withValues(alpha: 0.15)
+                          : Colors.white.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(18),
+                        topRight: const Radius.circular(18),
+                        bottomLeft: Radius.circular(isMe ? 18 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 18),
+                      ),
                     ),
                     child: Text(
                       msg['text'] ?? '',
@@ -323,7 +414,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           Container(
             padding: const EdgeInsets.fromLTRB(16, 10, 8, 20),
-            color: Colors.black,
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Colors.white10)),
+            ),
             child: Row(
               children: [
                 Expanded(
