@@ -48,8 +48,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   int selectedTime = 5;
   double fontSize = 16;
-  Color myBubbleColor = Colors.white.withValues(alpha: 0.15);
-  Color otherBubbleColor = Colors.white.withValues(alpha: 0.08);
+  Color myBubbleColor = Colors.white.withOpacity(0.15);
+  Color otherBubbleColor = Colors.white.withOpacity(0.08);
   String? backgroundImageUrl;
   Color backgroundColor = const Color(0xFF0A0A0A);
 
@@ -173,7 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black.withValues(alpha: 0.3),
+        backgroundColor: Colors.black.withOpacity(0.3),
         title: const Text(
           'Дыхание',
           style: TextStyle(
