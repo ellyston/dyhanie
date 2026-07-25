@@ -8,6 +8,8 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:io';
 
+import 'screens/vpn_screen.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -102,7 +104,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   final TextEditingController _usernameController = TextEditingController();
   File? _avatarFile;
   String? _error;
-
   final ImagePicker _picker = ImagePicker();
 
   Future<void> _pickAvatar() async {
@@ -116,20 +117,16 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
   Future<void> _saveProfile() async {
     final username = _usernameController.text.trim().toLowerCase();
-
-    // Проверка: только маленькие английские буквы и цифры
     final valid = RegExp(r'^[a-z0-9]+$').hasMatch(username);
 
     if (username.isEmpty) {
       setState(() => _error = 'Введите имя пользователя');
       return;
     }
-
     if (!valid) {
       setState(() => _error = 'Только маленькие английские буквы и цифры');
       return;
     }
-
     if (username.length < 3) {
       setState(() => _error = 'Минимум 3 символа');
       return;
@@ -138,7 +135,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('username', username);
 
-    // Пока аватар сохраняем только локально (путь). Позже сделаем нормально.
     if (_avatarFile != null) {
       await prefs.setString('avatarPath', _avatarFile!.path);
     }
@@ -161,13 +157,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
           child: Column(
             children: [
               const SizedBox(height: 40),
-              const Text(
-                'Создай профиль',
-                style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300),
-              ),
+              const Text('Создай профиль', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300)),
               const SizedBox(height: 40),
-
-              // Аватар
               GestureDetector(
                 onTap: _pickAvatar,
                 child: CircleAvatar(
@@ -181,9 +172,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
               ),
               const SizedBox(height: 12),
               const Text('Нажми, чтобы выбрать аватар', style: TextStyle(color: Colors.white38, fontSize: 13)),
-
               const SizedBox(height: 40),
-
               TextField(
                 controller: _usernameController,
                 style: const TextStyle(color: Colors.white, fontSize: 18),
@@ -194,17 +183,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                   hintText: 'username',
                   hintStyle: const TextStyle(color: Colors.white30),
                   errorText: _error,
-                  enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
-                  ),
-                  focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white),
-                  ),
+                  enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
                 ),
               ),
-
               const SizedBox(height: 40),
-
               SizedBox(
                 width: double.infinity,
                 height: 54,
@@ -260,16 +243,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.shield_outlined, color: Colors.white70),
+            tooltip: 'VPN',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VpnScreen()),
+              );
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                '@$username',
-                style: const TextStyle(color: Colors.white54, fontSize: 16),
-              ),
+              Text('@$username', style: const TextStyle(color: Colors.white54, fontSize: 16)),
               const SizedBox(height: 16),
               const Text(
                 'Дыхание',
@@ -432,7 +428,6 @@ class _ChatScreenState extends State<ChatScreen> {
         }).toList();
 
         list.sort((a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
-
         setState(() => messages = list);
 
         final now = DateTime.now().millisecondsSinceEpoch;
