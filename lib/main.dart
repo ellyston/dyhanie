@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'dart:math';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'screens/vpn_screen.dart';
@@ -43,7 +42,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ===================== ПРОВЕРКА АККАУНТА =====================
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -61,21 +59,12 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _checkUser() async {
     final prefs = await SharedPreferences.getInstance();
     final username = prefs.getString('username');
-
     await Future.delayed(const Duration(milliseconds: 600));
-
     if (!mounted) return;
-
     if (username == null || username.isEmpty) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const CreateProfileScreen()),
-      );
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const CreateProfileScreen()));
     } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
     }
   }
 
@@ -83,17 +72,11 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return const Scaffold(
       backgroundColor: Colors.black,
-      body: Center(
-        child: Text(
-          'Дыхание',
-          style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w300),
-        ),
-      ),
+      body: Center(child: Text('Дыхание', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w300))),
     );
   }
 }
 
-// ===================== СОЗДАНИЕ ПРОФИЛЯ =====================
 class CreateProfileScreen extends StatefulWidget {
   const CreateProfileScreen({super.key});
 
@@ -111,16 +94,13 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 512);
     if (image != null) {
       final bytes = await image.readAsBytes();
-      setState(() {
-        _avatarBytes = bytes;
-      });
+      setState(() => _avatarBytes = bytes);
     }
   }
 
   Future<void> _saveProfile() async {
     final username = _usernameController.text.trim().toLowerCase();
     final valid = RegExp(r'^[a-z0-9]+$').hasMatch(username);
-
     if (username.isEmpty) {
       setState(() => _error = 'Введите имя пользователя');
       return;
@@ -133,16 +113,10 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       setState(() => _error = 'Минимум 3 символа');
       return;
     }
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('username', username);
-
     if (!mounted) return;
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-    );
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
   }
 
   @override
@@ -163,9 +137,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                   radius: 50,
                   backgroundColor: Colors.white12,
                   backgroundImage: _avatarBytes != null ? MemoryImage(_avatarBytes!) : null,
-                  child: _avatarBytes == null
-                      ? const Icon(Icons.add_a_photo, color: Colors.white54, size: 32)
-                      : null,
+                  child: _avatarBytes == null ? const Icon(Icons.add_a_photo, color: Colors.white54, size: 32) : null,
                 ),
               ),
               const SizedBox(height: 12),
@@ -174,9 +146,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
               TextField(
                 controller: _usernameController,
                 style: const TextStyle(color: Colors.white, fontSize: 18),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')),
-                ],
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]'))],
                 decoration: InputDecoration(
                   hintText: 'username',
                   hintStyle: const TextStyle(color: Colors.white30),
@@ -190,11 +160,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                   onPressed: _saveProfile,
                   child: const Text('Продолжить', style: TextStyle(fontSize: 17)),
                 ),
@@ -207,7 +173,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   }
 }
 
-// ===================== ГЛАВНЫЙ ЭКРАН =====================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -226,9 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUsername() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      username = prefs.getString('username') ?? '';
-    });
+    setState(() => username = prefs.getString('username') ?? '');
   }
 
   String _generateRoomCode() {
@@ -247,13 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.shield_outlined, color: Colors.white70),
-            tooltip: 'VPN',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const VpnScreen()),
-              );
-            },
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VpnScreen())),
           ),
         ],
       ),
@@ -265,28 +222,16 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Text('@$username', style: const TextStyle(color: Colors.white54, fontSize: 16)),
               const SizedBox(height: 16),
-              const Text(
-                'Дыхание',
-                style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w300, letterSpacing: 3),
-              ),
+              const Text('Дыхание', style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w300, letterSpacing: 3)),
               const SizedBox(height: 80),
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                   onPressed: () {
                     final code = _generateRoomCode();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(roomCode: code, username: username),
-                      ),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(roomCode: code, username: username)));
                   },
                   child: const Text('Создать комнату', style: TextStyle(fontSize: 18)),
                 ),
@@ -296,17 +241,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: double.infinity,
                 height: 56,
                 child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white54),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => JoinRoomScreen(username: username)),
-                    );
-                  },
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white54), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => JoinRoomScreen(username: username))),
                   child: const Text('Войти по коду', style: TextStyle(fontSize: 18)),
                 ),
               ),
@@ -318,7 +254,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ===================== ВХОД ПО КОДУ =====================
 class JoinRoomScreen extends StatefulWidget {
   final String username;
   const JoinRoomScreen({super.key, required this.username});
@@ -334,11 +269,7 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text('Вход в комнату', style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
+      appBar: AppBar(backgroundColor: Colors.black, title: const Text('Вход в комнату', style: TextStyle(color: Colors.white)), iconTheme: const IconThemeData(color: Colors.white)),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -350,33 +281,18 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
               style: const TextStyle(color: Colors.white, fontSize: 28, letterSpacing: 10),
               textAlign: TextAlign.center,
               maxLength: 6,
-              decoration: const InputDecoration(
-                hintText: 'КОД',
-                hintStyle: TextStyle(color: Colors.white30, letterSpacing: 10),
-                counterText: '',
-                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
-              ),
+              decoration: const InputDecoration(hintText: 'КОД', hintStyle: TextStyle(color: Colors.white30, letterSpacing: 10), counterText: '', enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)), focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white))),
             ),
             const SizedBox(height: 40),
             SizedBox(
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                 onPressed: () {
                   final code = _codeController.text.trim().toUpperCase();
                   if (code.length == 6) {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(roomCode: code, username: widget.username),
-                      ),
-                    );
+                    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ChatScreen(roomCode: code, username: widget.username)));
                   }
                 },
                 child: const Text('Войти', style: TextStyle(fontSize: 18)),
@@ -389,11 +305,9 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
   }
 }
 
-// ===================== ЧАТ =====================
 class ChatScreen extends StatefulWidget {
   final String roomCode;
   final String username;
-
   const ChatScreen({super.key, required this.roomCode, required this.username});
 
   @override
@@ -427,30 +341,21 @@ class _ChatScreenState extends State<ChatScreen> {
       if (event.snapshot.value != null) {
         final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
         final list = <Map<String, dynamic>>[];
-
         data.forEach((key, value) {
           final msg = Map<String, dynamic>.from(value as Map);
           msg['key'] = key.toString();
           list.add(msg);
         });
-
         list.sort((a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
-
-        // Запускаем таймеры для новых сообщений
         for (var msg in list) {
           final key = msg['key'] as String;
           if (!_timers.containsKey(key)) {
             _startMessageTimer(msg);
           }
         }
-
-        setState(() {
-          messages = list;
-        });
+        setState(() => messages = list);
       } else {
-        setState(() {
-          messages = [];
-        });
+        setState(() => messages = []);
       }
     });
   }
@@ -469,21 +374,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     _opacities[key] = 1.0;
-
-    // За 1.5 секунды до конца начинаем исчезать
     final fadeStart = remaining > 2 ? remaining - 1 : remaining;
 
     _timers[key] = Timer(Duration(seconds: fadeStart), () {
       if (!mounted) return;
-
-      // Плавное исчезновение
-      setState(() {
-        _opacities[key] = 0.0;
-      });
-
-      Future.delayed(const Duration(milliseconds: 800), () {
-        _removeMessage(key);
-      });
+      setState(() => _opacities[key] = 0.0);
+      Future.delayed(const Duration(milliseconds: 800), () => _removeMessage(key));
     });
   }
 
@@ -491,28 +387,21 @@ class _ChatScreenState extends State<ChatScreen> {
     _timers[key]?.cancel();
     _timers.remove(key);
     _opacities.remove(key);
-
-    // Удаляем из Firebase
     _db.child('rooms').child(widget.roomCode).child('messages').child(key).remove();
-
     if (mounted) {
-      setState(() {
-        messages.removeWhere((m) => m['key'] == key);
-      });
+      setState(() => messages.removeWhere((m) => m['key'] == key));
     }
   }
 
   void _sendMessage() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-
     _db.child('rooms').child(widget.roomCode).child('messages').push().set({
       'text': text,
       'username': widget.username,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'ttl': selectedTime,
     });
-
     _controller.clear();
     HapticFeedback.lightImpact();
   }
@@ -521,9 +410,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 1920);
     if (image != null) {
       final bytes = await image.readAsBytes();
-      setState(() {
-        backgroundBytes = bytes;
-      });
+      setState(() => backgroundBytes = bytes);
     }
   }
 
@@ -542,12 +429,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   const Text('Настройки чата', style: TextStyle(color: Colors.white, fontSize: 18)),
                   const SizedBox(height: 24),
-
-                  // Размер шрифта
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Размер шрифта сообщений', style: TextStyle(color: Colors.white70)),
-                  ),
+                  const Align(alignment: Alignment.centerLeft, child: Text('Размер шрифта сообщений', style: TextStyle(color: Colors.white70))),
                   Slider(
                     value: messageFontSize,
                     min: 12,
@@ -561,22 +443,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       setState(() => messageFontSize = value);
                     },
                   ),
-                  Text(
-                    '${messageFontSize.round()} px',
-                    style: const TextStyle(color: Colors.white54),
-                  ),
-
+                  Text('${messageFontSize.round()} px', style: const TextStyle(color: Colors.white54)),
                   const SizedBox(height: 16),
-
-                  // Фон
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white38),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white38), padding: const EdgeInsets.symmetric(vertical: 14)),
                       onPressed: () {
                         Navigator.pop(context);
                         _pickBackground();
@@ -585,7 +457,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       label: const Text('Выбрать фон чата'),
                     ),
                   ),
-
                   if (backgroundBytes != null) ...[
                     const SizedBox(height: 12),
                     SizedBox(
@@ -599,7 +470,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   ],
-
                   const SizedBox(height: 20),
                 ],
               ),
@@ -668,10 +538,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ? DecorationImage(
                   image: MemoryImage(backgroundBytes!),
                   fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    Colors.black.withValues(alpha: 0.55),
-                    BlendMode.darken,
-                  ),
+                  colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.55), BlendMode.darken),
                 )
               : null,
         ),
@@ -688,14 +555,8 @@ class _ChatScreenState extends State<ChatScreen> {
             centerTitle: true,
             iconTheme: const IconThemeData(color: Colors.white),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.timer, color: Colors.white70),
-                onPressed: _openTimeSelector,
-              ),
-              IconButton(
-                icon: const Icon(Icons.tune, color: Colors.white70),
-                onPressed: _openSettings,
-              ),
+              IconButton(icon: const Icon(Icons.timer, color: Colors.white70), onPressed: _openTimeSelector),
+              IconButton(icon: const Icon(Icons.tune, color: Colors.white70), onPressed: _openSettings),
             ],
           ),
           body: Column(
@@ -709,7 +570,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     final key = msg['key'] as String;
                     final isMe = msg['username'] == widget.username;
                     final opacity = _opacities[key] ?? 1.0;
-
                     return AnimatedOpacity(
                       opacity: opacity,
                       duration: const Duration(milliseconds: 700),
@@ -720,9 +580,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                           decoration: BoxDecoration(
-                            color: isMe
-                                ? Colors.white.withValues(alpha: 0.18)
-                                : Colors.white.withValues(alpha: 0.10),
+                            color: isMe ? Colors.white.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.only(
                               topLeft: const Radius.circular(18),
                               topRight: const Radius.circular(18),
@@ -733,21 +591,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (!isMe)
-                                Text(
-                                  '@${msg['username']}',
-                                  style: TextStyle(
-                                    color: Colors.white54,
-                                    fontSize: messageFontSize - 3,
-                                  ),
-                                ),
-                              Text(
-                                msg['text'] ?? '',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: messageFontSize,
-                                ),
-                              ),
+                              if (!isMe) Text('@${msg['username']}', style: TextStyle(color: Colors.white54, fontSize: messageFontSize - 3)),
+                              Text(msg['text'] ?? '', style: TextStyle(color: Colors.white, fontSize: messageFontSize)),
                             ],
                           ),
                         ),
@@ -758,28 +603,18 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 10, 8, 20),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.7),
-                  border: const Border(top: BorderSide(color: Colors.white10)),
-                ),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), border: const Border(top: BorderSide(color: Colors.white10))),
                 child: Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _controller,
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                          hintText: 'Сообщение...',
-                          hintStyle: TextStyle(color: Colors.white30),
-                          border: InputBorder.none,
-                        ),
+                        decoration: const InputDecoration(hintText: 'Сообщение...', hintStyle: TextStyle(color: Colors.white30), border: InputBorder.none),
                         onSubmitted: (_) => _sendMessage(),
                       ),
                     ),
-                    IconButton(
-                      onPressed: _sendMessage,
-                      icon: const Icon(Icons.send, color: Colors.white),
-                    ),
+                    IconButton(onPressed: _sendMessage, icon: const Icon(Icons.send, color: Colors.white)),
                   ],
                 ),
               ),
