@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'dart:math';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'screens/vpn_screen.dart';
 
@@ -102,15 +103,16 @@ class CreateProfileScreen extends StatefulWidget {
 
 class _CreateProfileScreenState extends State<CreateProfileScreen> {
   final TextEditingController _usernameController = TextEditingController();
-  File? _avatarFile;
+  Uint8List? _avatarBytes;
   String? _error;
   final ImagePicker _picker = ImagePicker();
 
   Future<void> _pickAvatar() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 512);
     if (image != null) {
+      final bytes = await image.readAsBytes();
       setState(() {
-        _avatarFile = File(image.path);
+        _avatarBytes = bytes;
       });
     }
   }
@@ -134,10 +136,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('username', username);
-
-    if (_avatarFile != null) {
-      await prefs.setString('avatarPath', _avatarFile!.path);
-    }
 
     if (!mounted) return;
 
@@ -164,8 +162,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 child: CircleAvatar(
                   radius: 50,
                   backgroundColor: Colors.white12,
-                  backgroundImage: _avatarFile != null ? FileImage(_avatarFile!) : null,
-                  child: _avatarFile == null
+                  backgroundImage: _avatarBytes != null ? MemoryImage(_avatarBytes!) : null,
+                  child: _avatarBytes == null
                       ? const Icon(Icons.add_a_photo, color: Colors.white54, size: 32)
                       : null,
                 ),
@@ -405,9 +403,16 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
-  List<Map<dynamic, dynamic>> messages = [];
+  final ImagePicker _picker = ImagePicker();
+
+  List<Map<String, dynamic>> messages = [];
+  final Map<String, Timer> _timers = {};
+  final Map<String, double> _opacities = {};
+
   StreamSubscription? _messagesSubscription;
   int selectedTime = 30;
+  double messageFontSize = 16.0;
+  Uint8List? backgroundBytes;
 
   final List<int> timeOptions = [5, 10, 15, 30, 60, 120, 300, 600];
 
@@ -421,27 +426,80 @@ class _ChatScreenState extends State<ChatScreen> {
     _messagesSubscription = _db.child('rooms').child(widget.roomCode).child('messages').onValue.listen((event) {
       if (event.snapshot.value != null) {
         final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-        final list = data.entries.map((e) {
-          final msg = Map<dynamic, dynamic>.from(e.value as Map);
-          msg['key'] = e.key;
-          return msg;
-        }).toList();
+        final list = <Map<String, dynamic>>[];
+
+        data.forEach((key, value) {
+          final msg = Map<String, dynamic>.from(value as Map);
+          msg['key'] = key.toString();
+          list.add(msg);
+        });
 
         list.sort((a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
-        setState(() => messages = list);
 
-        final now = DateTime.now().millisecondsSinceEpoch;
+        // Запускаем таймеры для новых сообщений
         for (var msg in list) {
-          final created = msg['timestamp'] as int;
-          final ttl = (msg['ttl'] as int) * 1000;
-          if (now - created > ttl) {
-            _db.child('rooms').child(widget.roomCode).child('messages').child(msg['key']).remove();
+          final key = msg['key'] as String;
+          if (!_timers.containsKey(key)) {
+            _startMessageTimer(msg);
           }
         }
+
+        setState(() {
+          messages = list;
+        });
       } else {
-        setState(() => messages = []);
+        setState(() {
+          messages = [];
+        });
       }
     });
+  }
+
+  void _startMessageTimer(Map<String, dynamic> msg) {
+    final key = msg['key'] as String;
+    final created = msg['timestamp'] as int;
+    final ttlSeconds = msg['ttl'] as int? ?? 30;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final elapsed = (now - created) ~/ 1000;
+    final remaining = ttlSeconds - elapsed;
+
+    if (remaining <= 0) {
+      _removeMessage(key);
+      return;
+    }
+
+    _opacities[key] = 1.0;
+
+    // За 1.5 секунды до конца начинаем исчезать
+    final fadeStart = remaining > 2 ? remaining - 1 : remaining;
+
+    _timers[key] = Timer(Duration(seconds: fadeStart), () {
+      if (!mounted) return;
+
+      // Плавное исчезновение
+      setState(() {
+        _opacities[key] = 0.0;
+      });
+
+      Future.delayed(const Duration(milliseconds: 800), () {
+        _removeMessage(key);
+      });
+    });
+  }
+
+  void _removeMessage(String key) {
+    _timers[key]?.cancel();
+    _timers.remove(key);
+    _opacities.remove(key);
+
+    // Удаляем из Firebase
+    _db.child('rooms').child(widget.roomCode).child('messages').child(key).remove();
+
+    if (mounted) {
+      setState(() {
+        messages.removeWhere((m) => m['key'] == key);
+      });
+    }
   }
 
   void _sendMessage() {
@@ -457,6 +515,99 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _controller.clear();
     HapticFeedback.lightImpact();
+  }
+
+  Future<void> _pickBackground() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 1920);
+    if (image != null) {
+      final bytes = await image.readAsBytes();
+      setState(() {
+        backgroundBytes = bytes;
+      });
+    }
+  }
+
+  void _openSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Настройки чата', style: TextStyle(color: Colors.white, fontSize: 18)),
+                  const SizedBox(height: 24),
+
+                  // Размер шрифта
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Размер шрифта сообщений', style: TextStyle(color: Colors.white70)),
+                  ),
+                  Slider(
+                    value: messageFontSize,
+                    min: 12,
+                    max: 24,
+                    divisions: 12,
+                    label: messageFontSize.round().toString(),
+                    activeColor: Colors.white,
+                    inactiveColor: Colors.white24,
+                    onChanged: (value) {
+                      setModalState(() => messageFontSize = value);
+                      setState(() => messageFontSize = value);
+                    },
+                  ),
+                  Text(
+                    '${messageFontSize.round()} px',
+                    style: const TextStyle(color: Colors.white54),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Фон
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white38),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _pickBackground();
+                      },
+                      icon: const Icon(Icons.image),
+                      label: const Text('Выбрать фон чата'),
+                    ),
+                  ),
+
+                  if (backgroundBytes != null) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: () {
+                          setState(() => backgroundBytes = null);
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Убрать фон', style: TextStyle(color: Colors.redAccent)),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _openTimeSelector() {
@@ -500,6 +651,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _messagesSubscription?.cancel();
+    for (var timer in _timers.values) {
+      timer.cancel();
+    }
     super.dispose();
   }
 
@@ -507,92 +661,131 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Column(
-          children: [
-            const Text('Дыхание', style: TextStyle(color: Colors.white, fontSize: 18)),
-            Text('Код: ${widget.roomCode}', style: const TextStyle(color: Colors.white54, fontSize: 13)),
-          ],
+      body: Container(
+        decoration: BoxDecoration(
+          color: Colors.black,
+          image: backgroundBytes != null
+              ? DecorationImage(
+                  image: MemoryImage(backgroundBytes!),
+                  fit: BoxFit.cover,
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withValues(alpha: 0.55),
+                    BlendMode.darken,
+                  ),
+                )
+              : null,
         ),
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.timer, color: Colors.white70),
-            onPressed: _openTimeSelector,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final msg = messages[index];
-                final isMe = msg['username'] == widget.username;
-
-                return Align(
-                  alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                    decoration: BoxDecoration(
-                      color: isMe ? Colors.white.withOpacity(0.15) : Colors.white.withOpacity(0.07),
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(18),
-                        topRight: const Radius.circular(18),
-                        bottomLeft: Radius.circular(isMe ? 18 : 4),
-                        bottomRight: Radius.circular(isMe ? 4 : 18),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!isMe)
-                          Text(
-                            '@${msg['username']}',
-                            style: const TextStyle(color: Colors.white54, fontSize: 12),
-                          ),
-                        Text(
-                          msg['text'] ?? '',
-                          style: const TextStyle(color: Colors.white, fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 10, 8, 20),
-            decoration: const BoxDecoration(border: Border(top: BorderSide(color: Colors.white10))),
-            child: Row(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            backgroundColor: Colors.black.withValues(alpha: 0.6),
+            title: Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      hintText: 'Сообщение...',
-                      hintStyle: TextStyle(color: Colors.white30),
-                      border: InputBorder.none,
-                    ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                IconButton(
-                  onPressed: _sendMessage,
-                  icon: const Icon(Icons.send, color: Colors.white),
-                ),
+                const Text('Дыхание', style: TextStyle(color: Colors.white, fontSize: 18)),
+                Text('Код: ${widget.roomCode}', style: const TextStyle(color: Colors.white54, fontSize: 13)),
               ],
             ),
+            centerTitle: true,
+            iconTheme: const IconThemeData(color: Colors.white),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.timer, color: Colors.white70),
+                onPressed: _openTimeSelector,
+              ),
+              IconButton(
+                icon: const Icon(Icons.tune, color: Colors.white70),
+                onPressed: _openSettings,
+              ),
+            ],
           ),
-        ],
+          body: Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = messages[index];
+                    final key = msg['key'] as String;
+                    final isMe = msg['username'] == widget.username;
+                    final opacity = _opacities[key] ?? 1.0;
+
+                    return AnimatedOpacity(
+                      opacity: opacity,
+                      duration: const Duration(milliseconds: 700),
+                      child: Align(
+                        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                          decoration: BoxDecoration(
+                            color: isMe
+                                ? Colors.white.withValues(alpha: 0.18)
+                                : Colors.white.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(18),
+                              topRight: const Radius.circular(18),
+                              bottomLeft: Radius.circular(isMe ? 18 : 4),
+                              bottomRight: Radius.circular(isMe ? 4 : 18),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (!isMe)
+                                Text(
+                                  '@${msg['username']}',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: messageFontSize - 3,
+                                  ),
+                                ),
+                              Text(
+                                msg['text'] ?? '',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: messageFontSize,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 20),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  border: const Border(top: BorderSide(color: Colors.white10)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          hintText: 'Сообщение...',
+                          hintStyle: TextStyle(color: Colors.white30),
+                          border: InputBorder.none,
+                        ),
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _sendMessage,
+                      icon: const Icon(Icons.send, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
