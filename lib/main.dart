@@ -41,7 +41,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ===================== SPLASH =====================
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   @override
@@ -71,14 +70,11 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return const Scaffold(
       backgroundColor: Colors.black,
-      body: Center(
-        child: Text('Дыхание', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w300)),
-      ),
+      body: Center(child: Text('Дыхание', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w300))),
     );
   }
 }
 
-// ===================== СОЗДАНИЕ ПРОФИЛЯ =====================
 class CreateProfileScreen extends StatefulWidget {
   const CreateProfileScreen({super.key});
   @override
@@ -113,7 +109,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       setState(() => _error = 'Минимум 3 символа');
       return;
     }
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('username', username);
     if (_avatarBytes != null) {
@@ -181,7 +176,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   }
 }
 
-// ===================== ГЛАВНЫЙ ЭКРАН =====================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
   @override
@@ -224,14 +218,15 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.contacts_outlined, color: Colors.white70),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => ContactsScreen(myUsername: username)),
-            ),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => ContactsScreen(myUsername: username)));
+            },
           ),
           IconButton(
             icon: const Icon(Icons.shield_outlined, color: Colors.white70),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VpnScreen())),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const VpnScreen()));
+            },
           ),
         ],
       ),
@@ -245,9 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () async {
                   await Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => ProfileScreen(username: username, avatarBytes: avatarBytes),
-                    ),
+                    MaterialPageRoute(builder: (_) => ProfileScreen(username: username, avatarBytes: avatarBytes)),
                   );
                   _loadProfile();
                 },
@@ -258,10 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       backgroundColor: Colors.white12,
                       backgroundImage: avatarBytes != null ? MemoryImage(avatarBytes!) : null,
                       child: avatarBytes == null
-                          ? Text(
-                              username.isNotEmpty ? username[0].toUpperCase() : '?',
-                              style: const TextStyle(color: Colors.white, fontSize: 28),
-                            )
+                          ? Text(username.isNotEmpty ? username[0].toUpperCase() : '?', style: const TextStyle(color: Colors.white, fontSize: 28))
                           : null,
                     ),
                     const SizedBox(height: 12),
@@ -271,10 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 50),
-              const Text(
-                'Дыхание',
-                style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w300, letterSpacing: 3),
-              ),
+              const Text('Дыхание', style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w300, letterSpacing: 3)),
               const SizedBox(height: 60),
               SizedBox(
                 width: double.infinity,
@@ -283,33 +270,30 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   ),
                   onPressed: () {
                     final code = _generateRoomCode();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => ChatScreen(roomCode: code, username: username)),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(roomCode: code, username: username)));
                   },
-                  child: const Text('Создать комнату', style: TextStyle(fontSize: 18)),
+                  child: const Text('Создать комнату', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white54),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   ),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => JoinRoomScreen(username: username)),
-                  ),
-                  child: const Text('Войти по коду', style: TextStyle(fontSize: 18)),
+                  onPressed: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => JoinRoomScreen(username: username)));
+                  },
+                  child: const Text('Войти по коду', style: TextStyle(fontSize: 17)),
                 ),
               ),
             ],
@@ -320,7 +304,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ===================== ПРОФИЛЬ =====================
 class ProfileScreen extends StatefulWidget {
   final String username;
   final Uint8List? avatarBytes;
@@ -424,7 +407,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// ===================== КОНТАКТЫ =====================
 class ContactsScreen extends StatefulWidget {
   final String myUsername;
   const ContactsScreen({super.key, required this.myUsername});
@@ -434,24 +416,85 @@ class ContactsScreen extends StatefulWidget {
 
 class _ContactsScreenState extends State<ContactsScreen> {
   List<String> contacts = [];
+  List<String> filtered = [];
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadContacts();
+    _searchController.addListener(_filter);
   }
 
   Future<void> _loadContacts() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList('contacts') ?? [];
-    setState(() => contacts = raw);
+    setState(() {
+      contacts = raw;
+      filtered = raw;
+    });
+  }
+
+  void _filter() {
+    final q = _searchController.text.trim().toLowerCase();
+    setState(() {
+      filtered = q.isEmpty ? contacts : contacts.where((c) => c.contains(q)).toList();
+    });
   }
 
   Future<void> _removeContact(String name) async {
     final prefs = await SharedPreferences.getInstance();
     contacts.remove(name);
     await prefs.setStringList('contacts', contacts);
-    setState(() {});
+    _filter();
+  }
+
+  String _generateRoomCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final random = Random();
+    return String.fromCharCodes(Iterable.generate(6, (_) => chars.codeUnitAt(random.nextInt(chars.length))));
+  }
+
+  void _writeTo(String name) {
+    final code = _generateRoomCode();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Чат с @$name', style: const TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Отправь этот код собеседнику:', style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 16),
+            SelectableText(code, style: const TextStyle(color: Colors.white, fontSize: 28, letterSpacing: 6, fontWeight: FontWeight.w300)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: code));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Код скопирован')));
+            },
+            child: const Text('Копировать', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(roomCode: code, username: widget.myUsername)));
+            },
+            child: const Text('Открыть чат', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -463,46 +506,76 @@ class _ContactsScreenState extends State<ContactsScreen> {
         title: const Text('Контакты', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: contacts.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.people_outline, size: 48, color: Colors.white24),
-                  SizedBox(height: 16),
-                  Text('Пока нет контактов', style: TextStyle(color: Colors.white38, fontSize: 16)),
-                  SizedBox(height: 8),
-                  Text('Они появятся после общения', style: TextStyle(color: Colors.white24, fontSize: 13)),
-                ],
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Поиск...',
+                hintStyle: const TextStyle(color: Colors.white30),
+                prefixIcon: const Icon(Icons.search, color: Colors.white38),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.06),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
               ),
-            )
-          : ListView.builder(
-              itemCount: contacts.length,
-              itemBuilder: (context, index) {
-                final name = contacts[index];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.white12,
-                    child: Text(name[0].toUpperCase(), style: const TextStyle(color: Colors.white)),
-                  ),
-                  title: Text('@$name', style: const TextStyle(color: Colors.white)),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white38, size: 20),
-                    onPressed: () => _removeContact(name),
-                  ),
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Создай комнату и отправь код @$name')),
-                    );
-                  },
-                );
-              },
             ),
+          ),
+          Expanded(
+            child: filtered.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.people_outline, size: 52, color: Colors.white.withValues(alpha: 0.15)),
+                        const SizedBox(height: 16),
+                        Text(contacts.isEmpty ? 'Пока нет контактов' : 'Ничего не найдено', style: const TextStyle(color: Colors.white38, fontSize: 16)),
+                        if (contacts.isEmpty) ...[
+                          const SizedBox(height: 8),
+                          const Text('Они появятся после общения', style: TextStyle(color: Colors.white24, fontSize: 13)),
+                        ],
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
+                    itemBuilder: (context, index) {
+                      final name = filtered[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.white12,
+                          child: Text(name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                        ),
+                        title: Text('@$name', style: const TextStyle(color: Colors.white, fontSize: 16)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.chat_bubble_outline, color: Colors.white70, size: 22),
+                              onPressed: () => _writeTo(name),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white30, size: 18),
+                              onPressed: () => _removeContact(name),
+                            ),
+                          ],
+                        ),
+                        onTap: () => _writeTo(name),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-// ===================== ВХОД ПО КОДУ =====================
 class JoinRoomScreen extends StatefulWidget {
   final String username;
   const JoinRoomScreen({super.key, required this.username});
@@ -556,9 +629,7 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                   if (code.length == 6) {
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(roomCode: code, username: widget.username),
-                      ),
+                      MaterialPageRoute(builder: (_) => ChatScreen(roomCode: code, username: widget.username)),
                     );
                   }
                 },
@@ -572,7 +643,6 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
   }
 }
 
-// ===================== ЧАТ =====================
 class ChatScreen extends StatefulWidget {
   final String roomCode;
   final String username;
@@ -596,6 +666,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   StreamSubscription? _typingSubscription;
   StreamSubscription? _saveSubscription;
   StreamSubscription? _presenceSubscription;
+  StreamSubscription? _callSubscription;
 
   int selectedTime = 30;
   double messageFontSize = 16.0;
@@ -606,6 +677,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? saveRequestedBy;
   String? otherUser;
   bool otherOnline = false;
+  bool _incomingDialogShown = false;
 
   final List<int> timeOptions = [5, 10, 15, 30, 60, 120, 300, 600];
   Timer? _typingThrottle;
@@ -619,6 +691,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _listenTyping();
     _listenSaveStatus();
     _listenPresence();
+    _listenCalls();
     _controller.addListener(_onTyping);
   }
 
@@ -650,24 +723,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
         return;
       }
-
       final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
       String? other;
       bool online = false;
-
       data.forEach((key, value) {
         if (key.toString() != widget.username) {
           other = key.toString();
           online = value == true;
         }
       });
-
       setState(() {
         otherUser = other;
         otherOnline = online;
       });
-
-      // Сохраняем контакт локально
       if (other != null) {
         final prefs = await SharedPreferences.getInstance();
         final contacts = prefs.getStringList('contacts') ?? [];
@@ -677,6 +745,67 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       }
     });
+  }
+
+  void _listenCalls() {
+    _callSubscription = _db.child('rooms').child(widget.roomCode).child('call').onValue.listen((event) {
+      if (event.snapshot.value == null) return;
+      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+      final status = data['status']?.toString();
+      final to = data['to']?.toString();
+      final from = data['from']?.toString();
+      if (status == 'ringing' && to == widget.username && from != null && !_incomingDialogShown) {
+        _incomingDialogShown = true;
+        _showIncomingCall(from);
+      }
+      if (status == 'ended' || status == 'rejected') {
+        _incomingDialogShown = false;
+      }
+    });
+  }
+
+  void _showIncomingCall(String from) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Входящий звонок', style: TextStyle(color: Colors.white)),
+          content: Text('@$from звонит вам', style: const TextStyle(color: Colors.white70)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _db.child('rooms').child(widget.roomCode).child('call').update({'status': 'rejected'});
+                _incomingDialogShown = false;
+                Navigator.pop(context);
+              },
+              child: const Text('Отклонить', style: TextStyle(color: Colors.redAccent)),
+            ),
+            TextButton(
+              onPressed: () {
+                _db.child('rooms').child(widget.roomCode).child('call').update({'status': 'accepted'});
+                _incomingDialogShown = false;
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CallScreen(
+                      roomCode: widget.roomCode,
+                      username: widget.username,
+                      otherUser: from,
+                      isIncoming: true,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Принять', style: TextStyle(color: Colors.greenAccent)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _onTyping() {
@@ -696,9 +825,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
       String? other;
       data.forEach((key, value) {
-        if (key.toString() != widget.username && value == true) {
-          other = key.toString();
-        }
+        if (key.toString() != widget.username && value == true) other = key.toString();
       });
       setState(() => typingUser = other);
     });
@@ -729,7 +856,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() => messages = []);
         return;
       }
-
       final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
       final list = <Map<String, dynamic>>[];
       data.forEach((key, value) {
@@ -738,7 +864,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         list.add(msg);
       });
       list.sort((a, b) => (a['timestamp'] as int).compareTo(b['timestamp'] as int));
-
       for (var msg in list) {
         final key = msg['key'] as String;
         if (!_knownMessageKeys.contains(key)) {
@@ -750,7 +875,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           if (!isSavedChat) _startMessageTimer(msg);
         }
       }
-
       setState(() => messages = list);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
@@ -772,12 +896,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final now = DateTime.now().millisecondsSinceEpoch;
     final elapsed = (now - created) ~/ 1000;
     var remaining = ttlSeconds - elapsed;
-
     if (remaining <= 0) {
       _removeMessage(key);
       return;
     }
-
     _remainingSeconds[key] = remaining;
     _timers[key]?.cancel();
     _timers[key] = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -799,9 +921,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _timers.remove(key);
     _remainingSeconds.remove(key);
     _db.child('rooms').child(widget.roomCode).child('messages').child(key).remove();
-    if (mounted) {
-      setState(() => messages.removeWhere((m) => m['key'] == key));
-    }
+    if (mounted) setState(() => messages.removeWhere((m) => m['key'] == key));
   }
 
   void _sendMessage() {
@@ -823,16 +943,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'saveRequestedBy': widget.username,
       'saved': false,
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Запрос на сохранение отправлен')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Запрос на сохранение отправлен')));
   }
 
   void _acceptSaveChat() {
-    _db.child('rooms').child(widget.roomCode).child('meta').update({
-      'saved': true,
-      'saveRequestedBy': null,
-    });
+    _db.child('rooms').child(widget.roomCode).child('meta').update({'saved': true, 'saveRequestedBy': null});
     for (var t in _timers.values) {
       t.cancel();
     }
@@ -841,9 +956,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _declineSaveChat() {
-    _db.child('rooms').child(widget.roomCode).child('meta').update({
-      'saveRequestedBy': null,
-    });
+    _db.child('rooms').child(widget.roomCode).child('meta').update({'saveRequestedBy': null});
     setState(() => saveRequestIncoming = false);
   }
 
@@ -858,9 +971,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _copyRoomCode() {
     Clipboard.setData(ClipboardData(text: widget.roomCode));
     HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Код комнаты скопирован'), duration: Duration(seconds: 1)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Код комнаты скопирован'), duration: Duration(seconds: 1)));
   }
 
   void _exitRoom() {
@@ -869,25 +980,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Text('Выйти из комнаты?', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'В призрачном режиме сообщения могут исчезнуть.',
-          style: TextStyle(color: Colors.white70),
-        ),
+        content: const Text('В призрачном режиме сообщения могут исчезнуть.', style: TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена', style: TextStyle(color: Colors.white54))),
           TextButton(
             onPressed: () async {
               await _db.child('rooms').child(widget.roomCode).child('presence').child(widget.username).remove();
               await _db.child('rooms').child(widget.roomCode).child('typing').child(widget.username).remove();
-
               final snap = await _db.child('rooms').child(widget.roomCode).child('presence').get();
               if (!isSavedChat && (snap.value == null || (snap.value as Map).isEmpty)) {
                 await _db.child('rooms').child(widget.roomCode).remove();
               }
-
               if (!mounted) return;
               Navigator.pop(context);
               Navigator.pop(context);
@@ -900,6 +1003,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _startCall() {
+    if (otherUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Собеседник не в сети')));
+      return;
+    }
+    _db.child('rooms').child(widget.roomCode).child('call').set({
+      'from': widget.username,
+      'to': otherUser,
+      'status': 'ringing',
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -907,6 +1020,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           roomCode: widget.roomCode,
           username: widget.username,
           otherUser: otherUser,
+          isIncoming: false,
         ),
       ),
     );
@@ -927,10 +1041,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 children: [
                   const Text('Настройки чата', style: TextStyle(color: Colors.white, fontSize: 18)),
                   const SizedBox(height: 20),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Размер шрифта', style: TextStyle(color: Colors.white70)),
-                  ),
+                  const Align(alignment: Alignment.centerLeft, child: Text('Размер шрифта', style: TextStyle(color: Colors.white70))),
                   Slider(
                     value: messageFontSize,
                     min: 12,
@@ -946,10 +1057,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white38),
-                      ),
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white38)),
                       onPressed: () {
                         Navigator.pop(context);
                         _pickBackground();
@@ -963,10 +1071,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
                         onPressed: () {
                           Navigator.pop(context);
                           _proposeSaveChat();
@@ -977,10 +1082,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                   ],
                   if (isSavedChat)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 12),
-                      child: Text('Чат сохранён', style: TextStyle(color: Colors.greenAccent)),
-                    ),
+                    const Padding(padding: EdgeInsets.only(top: 12), child: Text('Чат сохранён', style: TextStyle(color: Colors.greenAccent))),
                   const SizedBox(height: 16),
                 ],
               ),
@@ -1037,6 +1139,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _typingSubscription?.cancel();
     _saveSubscription?.cancel();
     _presenceSubscription?.cancel();
+    _callSubscription?.cancel();
     _typingThrottle?.cancel();
     for (var t in _timers.values) {
       t.cancel();
@@ -1057,10 +1160,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ? DecorationImage(
                   image: MemoryImage(backgroundBytes!),
                   fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    Colors.black.withValues(alpha: 0.55),
-                    BlendMode.darken,
-                  ),
+                  colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.55), BlendMode.darken),
                 )
               : null,
         ),
@@ -1100,20 +1200,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(
                     children: [
-                      Expanded(
-                        child: Text(
-                          '@$saveRequestedBy предлагает сохранить чат',
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: _declineSaveChat,
-                        child: const Text('Нет', style: TextStyle(color: Colors.white54)),
-                      ),
-                      TextButton(
-                        onPressed: _acceptSaveChat,
-                        child: const Text('Да', style: TextStyle(color: Colors.greenAccent)),
-                      ),
+                      Expanded(child: Text('@$saveRequestedBy предлагает сохранить чат', style: const TextStyle(color: Colors.white))),
+                      TextButton(onPressed: _declineSaveChat, child: const Text('Нет', style: TextStyle(color: Colors.white54))),
+                      TextButton(onPressed: _acceptSaveChat, child: const Text('Да', style: TextStyle(color: Colors.greenAccent))),
                     ],
                   ),
                 ),
@@ -1150,13 +1239,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             child: Container(
                               margin: const EdgeInsets.only(bottom: 12),
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              constraints: BoxConstraints(
-                                maxWidth: MediaQuery.of(context).size.width * 0.75,
-                              ),
+                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                               decoration: BoxDecoration(
-                                color: isMe
-                                    ? Colors.white.withValues(alpha: 0.18)
-                                    : Colors.white.withValues(alpha: 0.10),
+                                color: isMe ? Colors.white.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.10),
                                 borderRadius: BorderRadius.only(
                                   topLeft: const Radius.circular(18),
                                   topRight: const Radius.circular(18),
@@ -1168,27 +1253,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   if (!isMe)
-                                    Text(
-                                      '@${msg['username']}',
-                                      style: TextStyle(
-                                        color: Colors.white54,
-                                        fontSize: messageFontSize - 3,
-                                      ),
-                                    ),
-                                  Text(
-                                    msg['text'] ?? '',
-                                    style: TextStyle(color: Colors.white, fontSize: messageFontSize),
-                                  ),
+                                    Text('@${msg['username']}', style: TextStyle(color: Colors.white54, fontSize: messageFontSize - 3)),
+                                  Text(msg['text'] ?? '', style: TextStyle(color: Colors.white, fontSize: messageFontSize)),
                                   if (!isSavedChat && remaining != null)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        '${remaining}s',
-                                        style: TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: messageFontSize - 4,
-                                        ),
-                                      ),
+                                      child: Text('${remaining}s', style: TextStyle(color: Colors.white38, fontSize: messageFontSize - 4)),
                                     ),
                                 ],
                               ),
@@ -1200,10 +1270,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             duration: const Duration(milliseconds: 350),
                             builder: (context, value, child) => Opacity(
                               opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, 12 * (1 - value)),
-                                child: child,
-                              ),
+                              child: Transform.translate(offset: Offset(0, 12 * (1 - value)), child: child),
                             ),
                             child: bubble,
                           );
@@ -1230,10 +1297,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   padding: const EdgeInsets.only(left: 16, bottom: 6),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      '@$typingUser печатает...',
-                      style: const TextStyle(color: Colors.white38, fontSize: 13),
-                    ),
+                    child: Text('@$typingUser печатает...', style: const TextStyle(color: Colors.white38, fontSize: 13)),
                   ),
                 ),
               Container(
@@ -1256,10 +1320,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         onSubmitted: (_) => _sendMessage(),
                       ),
                     ),
-                    IconButton(
-                      onPressed: _sendMessage,
-                      icon: const Icon(Icons.send, color: Colors.white),
-                    ),
+                    IconButton(onPressed: _sendMessage, icon: const Icon(Icons.send, color: Colors.white)),
                   ],
                 ),
               ),
@@ -1271,17 +1332,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 }
 
-// ===================== ЭКРАН ЗВОНКА =====================
 class CallScreen extends StatefulWidget {
   final String roomCode;
   final String username;
   final String? otherUser;
+  final bool isIncoming;
 
   const CallScreen({
     super.key,
     required this.roomCode,
     required this.username,
     this.otherUser,
+    this.isIncoming = false,
   });
 
   @override
@@ -1289,23 +1351,44 @@ class CallScreen extends StatefulWidget {
 }
 
 class _CallScreenState extends State<CallScreen> {
+  final DatabaseReference _db = FirebaseDatabase.instance.ref();
   bool muted = false;
   bool speakerOn = true;
   bool cameraOn = false;
   Duration duration = Duration.zero;
   Timer? _timer;
+  StreamSubscription? _callSub;
+  String statusText = 'Соединение...';
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() => duration += const Duration(seconds: 1));
+    statusText = widget.isIncoming ? 'Звонок' : 'Вызов...';
+    _callSub = _db.child('rooms').child(widget.roomCode).child('call').onValue.listen((event) {
+      if (event.snapshot.value == null) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+      final status = data['status']?.toString();
+      if (status == 'accepted') {
+        if (_timer == null) {
+          setState(() => statusText = 'Разговор');
+          _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+            setState(() => duration += const Duration(seconds: 1));
+          });
+        }
+      }
+      if (status == 'rejected' || status == 'ended') {
+        if (mounted) Navigator.pop(context);
+      }
     });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _callSub?.cancel();
     super.dispose();
   }
 
@@ -1313,6 +1396,11 @@ class _CallScreenState extends State<CallScreen> {
     final m = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  void _endCall() {
+    _db.child('rooms').child(widget.roomCode).child('call').update({'status': 'ended'});
+    Navigator.pop(context);
   }
 
   @override
@@ -1328,7 +1416,7 @@ class _CallScreenState extends State<CallScreen> {
               style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300),
             ),
             const SizedBox(height: 8),
-            Text(_timeText, style: const TextStyle(color: Colors.white54, fontSize: 16)),
+            Text(statusText == 'Разговор' ? _timeText : statusText, style: const TextStyle(color: Colors.white54, fontSize: 16)),
             const Spacer(),
             CircleAvatar(
               radius: 70,
@@ -1354,7 +1442,7 @@ class _CallScreenState extends State<CallScreen> {
                     icon: Icons.call_end,
                     label: 'Завершить',
                     color: Colors.redAccent,
-                    onTap: () => Navigator.pop(context),
+                    onTap: _endCall,
                   ),
                   _roundButton(
                     icon: speakerOn ? Icons.volume_up : Icons.volume_off,
