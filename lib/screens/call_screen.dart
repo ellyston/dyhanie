@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+
+import '../services/call_webrtc_service.dart';
 
 class CallScreen extends StatefulWidget {
   final String roomCode;
@@ -13,8 +17,8 @@ class CallScreen extends StatefulWidget {
     super.key,
     required this.roomCode,
     required this.username,
-    this.otherUser,
-    this.isIncoming = false,
+    required this.otherUser,
+    required this.isIncoming,
   });
 
   @override
@@ -22,146 +26,286 @@ class CallScreen extends StatefulWidget {
 }
 
 class _CallScreenState extends State<CallScreen> {
-  final DatabaseReference _db = FirebaseDatabase.instance.ref();
+  CallWebRTCService? _rtc;
+  final _db = FirebaseDatabase.instance.ref();
+  final _remoteRenderer = RTCVideoRenderer();
 
+  String statusText = 'Подключение...';
   bool muted = false;
-  bool speakerOn = true;
-  bool cameraOn = false;
-  Duration duration = Duration.zero;
+  bool speakerOn = false;
+  bool connected = false;
+  bool _closing = false;
+
   Timer? _timer;
-  StreamSubscription? _callSub;
-  String statusText = 'Соединение...';
+  Timer? _ringTimeout;
+  int seconds = 0;
+
+  StreamSubscription? _callStatusSub;
+  StreamSubscription? _rtcStatusSub;
+  StreamSubscription? _remoteSub;
 
   @override
   void initState() {
     super.initState();
-    statusText = widget.isIncoming ? 'Звонок' : 'Вызов...';
+    _initRenderer();
+    _watchCallStatus();
+    _startRtc();
 
-    _callSub = _db.child('rooms').child(widget.roomCode).child('call').onValue.listen((event) {
-      if (event.snapshot.value == null) {
-        if (mounted) Navigator.pop(context);
-        return;
-      }
-
-      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      final status = data['status']?.toString();
-
-      if (status == 'accepted' && _timer == null) {
-        setState(() => statusText = 'Разговор');
-        _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-          setState(() => duration += const Duration(seconds: 1));
+    // если не ответили / не соединились — 45 сек
+    _ringTimeout = Timer(const Duration(seconds: 45), () async {
+      if (!connected && mounted && !_closing) {
+        await _db.child('rooms').child(widget.roomCode).child('call').update({
+          'status': 'no_answer',
         });
-      }
-
-      if (status == 'rejected' || status == 'ended' || status == 'no_answer') {
-        if (mounted) Navigator.pop(context);
+        await _finish();
       }
     });
+  }
+
+  Future<void> _initRenderer() async {
+    await _remoteRenderer.initialize();
+  }
+
+  void _attachRemote(MediaStream stream) {
+    _remoteRenderer.srcObject = stream;
+    if (!mounted) return;
+    setState(() {
+      connected = true;
+      statusText = 'Идёт звонок';
+    });
+    _startTimer();
+    HapticFeedback.lightImpact();
+  }
+
+  void _watchCallStatus() {
+    _callStatusSub = _db
+        .child('rooms')
+        .child(widget.roomCode)
+        .child('call')
+        .onValue
+        .listen((event) {
+      if (_closing) return;
+      if (event.snapshot.value == null) {
+        _finish();
+        return;
+      }
+      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+      final st = data['status']?.toString() ?? '';
+      if (st == 'rejected' || st == 'ended' || st == 'no_answer') {
+        _finish();
+      }
+      if (st == 'accepted' && mounted && !connected) {
+        setState(() => statusText = 'Соединение...');
+      }
+    });
+  }
+
+  Future<void> _startRtc() async {
+    final other = widget.otherUser;
+    if (other == null || other.isEmpty) {
+      setState(() => statusText = 'Нет собеседника');
+      return;
+    }
+
+    final isCaller = !widget.isIncoming;
+
+    if (widget.isIncoming) {
+      await _db
+          .child('rooms')
+          .child(widget.roomCode)
+          .child('call')
+          .update({'status': 'accepted'});
+    }
+
+    _rtc = CallWebRTCService(
+      roomCode: widget.roomCode,
+      username: widget.username,
+      otherUser: other,
+      isCaller: isCaller,
+    );
+
+    _remoteSub = _rtc!.remoteStream.listen(_attachRemote);
+
+    _rtcStatusSub = _rtc!.status.listen((s) {
+      if (!mounted || _closing) return;
+      setState(() {
+        if (!connected) {
+          if (s == 'mic_ok') {
+            statusText = isCaller ? 'Вызов...' : 'Соединение...';
+          } else if (s == 'offer_sent') {
+            statusText = 'Вызов...';
+          } else if (s == 'answer_sent' || s == 'answer_set') {
+            statusText = 'Соединение...';
+          } else if (s == 'link_lost') {
+            statusText = 'Связь потеряна';
+          } else if (s.startsWith('Ошибка') || s.startsWith('error')) {
+            statusText = s;
+          }
+        }
+        if (s == 'remote_audio' || s == 'connected') {
+          connected = true;
+          statusText = 'Идёт звонок';
+          _startTimer();
+        }
+      });
+    });
+
+    try {
+      await _rtc!.start();
+    } catch (e) {
+      if (mounted) setState(() => statusText = 'Ошибка: $e');
+    }
+  }
+
+  void _startTimer() {
+    if (_timer != null) return;
+    _ringTimeout?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => seconds++);
+    });
+  }
+
+  String get _timeLabel {
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  Future<void> _toggleMute() async {
+    setState(() => muted = !muted);
+    await _rtc?.setMuted(muted);
+  }
+
+  Future<void> _toggleSpeaker() async {
+    setState(() => speakerOn = !speakerOn);
+    await _rtc?.setSpeaker(speakerOn);
+  }
+
+  Future<void> _hangUp() async {
+    if (_closing) return;
+    await _db.child('rooms').child(widget.roomCode).child('call').update({
+      'status': 'ended',
+    });
+    await _finish();
+  }
+
+  Future<void> _finish() async {
+    if (_closing) return;
+    _closing = true;
+    _timer?.cancel();
+    _ringTimeout?.cancel();
+    await _rtc?.hangUp();
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _callSub?.cancel();
+    _ringTimeout?.cancel();
+    _callStatusSub?.cancel();
+    _rtcStatusSub?.cancel();
+    _remoteSub?.cancel();
+    _remoteRenderer.srcObject = null;
+    _remoteRenderer.dispose();
+    _rtc?.dispose();
     super.dispose();
-  }
-
-  String get _timeText {
-    final m = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  void _endCall() {
-    _db.child('rooms').child(widget.roomCode).child('call').update({
-      'status': 'ended',
-    });
-    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    final letter = (widget.otherUser ?? widget.username).isNotEmpty
-        ? (widget.otherUser ?? widget.username)[0].toUpperCase()
-        : '?';
+    final other = widget.otherUser ?? '…';
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            const SizedBox(height: 24),
-            Text(
-              widget.otherUser != null ? '@${widget.otherUser}' : 'Ожидание...',
-              style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300),
+            Positioned(
+              left: 0,
+              top: 0,
+              width: 1,
+              height: 1,
+              child: RTCVideoView(_remoteRenderer),
             ),
-            const SizedBox(height: 8),
-            Text(
-              statusText == 'Разговор' ? _timeText : statusText,
-              style: const TextStyle(color: Colors.white54, fontSize: 16),
-            ),
-            const SizedBox(height: 24),
-
-            // Видео-заглушка
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 24),
-                decoration: BoxDecoration(
-                  color: Colors.white10,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircleAvatar(
-                        radius: 48,
-                        backgroundColor: Colors.white12,
-                        child: Text(letter, style: const TextStyle(color: Colors.white, fontSize: 36)),
-                      ),
-                      const SizedBox(height: 16),
-                      Icon(
-                        cameraOn ? Icons.videocam : Icons.videocam_off,
-                        color: Colors.white24,
-                        size: 40,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        cameraOn ? 'Камера (заглушка)' : 'Видео выкл',
-                        style: const TextStyle(color: Colors.white38),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            Column(
               children: [
-                IconButton(
-                  icon: Icon(muted ? Icons.mic_off : Icons.mic, color: Colors.white, size: 32),
-                  onPressed: () => setState(() => muted = !muted),
+                const SizedBox(height: 48),
+                Icon(
+                  connected ? Icons.phone_in_talk : Icons.ring_volume,
+                  color: Colors.white54,
+                  size: 48,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.call_end, color: Colors.redAccent, size: 42),
-                  onPressed: _endCall,
+                const SizedBox(height: 20),
+                Text(
+                  '@$other',
+                  style: const TextStyle(color: Colors.white, fontSize: 28),
                 ),
-                IconButton(
-                  icon: Icon(speakerOn ? Icons.volume_up : Icons.volume_off, color: Colors.white, size: 32),
-                  onPressed: () => setState(() => speakerOn = !speakerOn),
+                const SizedBox(height: 8),
+                Text(
+                  connected ? _timeLabel : statusText,
+                  style: const TextStyle(color: Colors.white54, fontSize: 16),
                 ),
-                IconButton(
-                  icon: Icon(cameraOn ? Icons.videocam : Icons.videocam_off, color: Colors.white, size: 32),
-                  onPressed: () => setState(() => cameraOn = !cameraOn),
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _roundBtn(
+                      icon: muted ? Icons.mic_off : Icons.mic,
+                      color: muted ? Colors.orangeAccent : Colors.white24,
+                      label: muted ? 'Микрофон' : 'Микрофон',
+                      onTap: _toggleMute,
+                    ),
+                    _roundBtn(
+                      icon: Icons.call_end,
+                      color: Colors.redAccent,
+                      onTap: _hangUp,
+                      big: true,
+                    ),
+                    _roundBtn(
+                      icon: speakerOn ? Icons.volume_up : Icons.hearing,
+                      color: speakerOn ? Colors.blueAccent : Colors.white24,
+                      label: speakerOn ? 'Динамик' : 'Ухо',
+                      onTap: _toggleSpeaker,
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 48),
               ],
             ),
-            const SizedBox(height: 32),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _roundBtn({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    bool big = false,
+    String? label,
+  }) {
+    final size = big ? 72.0 : 56.0;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(size),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            child: Icon(icon, color: Colors.white, size: big ? 32 : 24),
+          ),
+        ),
+        if (label != null && !big) ...[
+          const SizedBox(height: 6),
+          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        ],
+      ],
     );
   }
 }

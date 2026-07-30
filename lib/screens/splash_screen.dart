@@ -5,7 +5,7 @@ import '../services/security_service.dart';
 import 'create_profile_screen.dart';
 import 'home_screen.dart';
 import 'pin_lock_screen.dart';
-import 'pin_setup_screen.dart';
+import 'welcome_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -28,10 +28,12 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     final pinSet = await _security.isPinSet();
+
+    // Первый запуск — приветствие с кнопкой
     if (!pinSet) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const PinSetupScreen()),
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
       );
       return;
     }
@@ -70,7 +72,11 @@ class _SplashScreenState extends State<SplashScreen> {
       body: Center(
         child: Text(
           'Дыхание',
-          style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w300),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 36,
+            fontWeight: FontWeight.w300,
+          ),
         ),
       ),
     );

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/contact_invite_service.dart';
 import 'home_screen.dart';
 
 class CreateProfileScreen extends StatefulWidget {
@@ -16,10 +17,11 @@ class CreateProfileScreen extends StatefulWidget {
 }
 
 class _CreateProfileScreenState extends State<CreateProfileScreen> {
-  final TextEditingController _controller = TextEditingController();
-  final ImagePicker _picker = ImagePicker();
+  final _controller = TextEditingController();
+  final _picker = ImagePicker();
   Uint8List? _avatar;
   String? _error;
+  bool _saving = false;
 
   Future<void> _pickAvatar() async {
     final img = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 512);
@@ -31,31 +33,39 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
   Future<void> _save() async {
     final username = _controller.text.trim().toLowerCase();
-
-    if (username.isEmpty) {
-      setState(() => _error = 'Введите имя пользователя');
-      return;
-    }
-    if (!RegExp(r'^[a-z0-9]+$').hasMatch(username)) {
-      setState(() => _error = 'Только маленькие английские буквы и цифры');
-      return;
-    }
-    if (username.length < 3) {
-      setState(() => _error = 'Минимум 3 символа');
+    if (username.length < 3 || !RegExp(r'^[a-z0-9]+$').hasMatch(username)) {
+      setState(() => _error = 'Только a-z и цифры, минимум 3 символа');
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('username', username);
-    if (_avatar != null) {
-      await prefs.setString('avatar', base64Encode(_avatar!));
-    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
 
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-    );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('username', username);
+      if (_avatar != null) {
+        await prefs.setString('avatar', base64Encode(_avatar!));
+      }
+
+      // регистрация ника для глобального поиска
+      await ContactInviteService().registerUsername(username);
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Ошибка сохранения';
+          _saving = false;
+        });
+      }
+    }
   }
 
   @override
@@ -75,14 +85,20 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
             children: [
               const SizedBox(height: 40),
               const Text(
-                'Создай профиль',
+                'Профиль',
                 style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Придумайте username — по нему вас найдут',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, fontSize: 14),
               ),
               const SizedBox(height: 40),
               GestureDetector(
                 onTap: _pickAvatar,
                 child: CircleAvatar(
-                  radius: 50,
+                  radius: 55,
                   backgroundColor: Colors.white12,
                   backgroundImage: _avatar != null ? MemoryImage(_avatar!) : null,
                   child: _avatar == null
@@ -90,11 +106,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                       : null,
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Нажми, чтобы выбрать аватар',
-                style: TextStyle(color: Colors.white38, fontSize: 13),
-              ),
+              const SizedBox(height: 10),
+              const Text('Аватар (необязательно)', style: TextStyle(color: Colors.white38, fontSize: 13)),
               const SizedBox(height: 40),
               TextField(
                 controller: _controller,
@@ -103,8 +116,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                   FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')),
                 ],
                 decoration: InputDecoration(
-                  hintText: 'username',
-                  hintStyle: const TextStyle(color: Colors.white30),
+                  labelText: 'Username',
+                  labelStyle: const TextStyle(color: Colors.white54),
                   errorText: _error,
                   enabledBorder: const UnderlineInputBorder(
                     borderSide: BorderSide(color: Colors.white24),
@@ -113,19 +126,28 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                     borderSide: BorderSide(color: Colors.white),
                   ),
                 ),
+                onSubmitted: (_) => _save(),
               ),
-              const SizedBox(height: 40),
+              const Spacer(),
               SizedBox(
                 width: double.infinity,
-                height: 54,
+                height: 52,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
-                  onPressed: _save,
-                  child: const Text('Продолжить', style: TextStyle(fontSize: 17)),
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Продолжить', style: TextStyle(fontSize: 16)),
                 ),
               ),
             ],

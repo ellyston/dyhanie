@@ -91,7 +91,6 @@ class DialogSignalService {
     }
   }
 
-  /// Подтверждение: получатель забрал сообщения
   Future<void> setDeliveredAck({
     required String from,
     required String to,
@@ -104,26 +103,30 @@ class DialogSignalService {
     });
   }
 
+  /// Полный снимок сигналов пользователя (бейджи сбрасываются при удалении signal)
   StreamSubscription listenMySignals({
     required String myUsername,
-    required void Function(String dialogId, Map data) onSignal,
+    required void Function(Map<String, Map<String, dynamic>> signalsByDialog) onSignals,
   }) {
     return _db.child('dialogs').onValue.listen((event) {
-      if (event.snapshot.value == null) return;
-      final root = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+      final result = <String, Map<String, dynamic>>{};
 
-      root.forEach((dialogId, dialogValue) {
-        if (dialogValue is! Map) return;
-        final dialog = Map<dynamic, dynamic>.from(dialogValue);
-        final signalNode = dialog['signal'];
-        if (signalNode is! Map) return;
+      if (event.snapshot.value is Map) {
+        final root = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+        root.forEach((dialogId, dialogValue) {
+          if (dialogValue is! Map) return;
+          final dialog = Map<dynamic, dynamic>.from(dialogValue);
+          final signalNode = dialog['signal'];
+          if (signalNode is! Map) return;
+          final signals = Map<dynamic, dynamic>.from(signalNode);
+          final mySignal = signals[myUsername];
+          if (mySignal is Map) {
+            result[dialogId.toString()] = Map<String, dynamic>.from(mySignal);
+          }
+        });
+      }
 
-        final signals = Map<dynamic, dynamic>.from(signalNode);
-        final mySignal = signals[myUsername];
-        if (mySignal is Map) {
-          onSignal(dialogId.toString(), Map<String, dynamic>.from(mySignal));
-        }
-      });
+      onSignals(result);
     });
   }
 

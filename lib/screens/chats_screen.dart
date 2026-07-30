@@ -28,28 +28,55 @@ class _ChatsScreenState extends State<ChatsScreen> {
     _loadLocalPending();
     _sub = _signals.listenMySignals(
       myUsername: widget.myUsername,
-      onSignal: (dialogId, data) {
-        final type = data['type']?.toString() ?? '';
-        final from = data['from']?.toString() ?? '';
-        final count = data['count'] is int
-            ? data['count'] as int
-            : int.tryParse('${data['count']}') ?? 1;
-        final ts = data['ts'] is int
-            ? data['ts'] as int
-            : int.tryParse('${data['ts']}') ?? 0;
-
-        final other = _otherFromDialogId(dialogId, widget.myUsername) ?? from;
-
+      onSignals: (map) {
         setState(() {
-          final prev = items[dialogId];
-          items[dialogId] = _ChatItem(
-            dialogId: dialogId,
-            otherUser: other,
-            incomingCount: type == 'pending_in' ? count : (prev?.incomingCount ?? 0),
-            comeOnline: type == 'come_online',
-            updatedAt: ts > 0 ? ts : (prev?.updatedAt ?? 0),
-            hasOutbox: prev?.hasOutbox ?? false,
+          final keep = <String>{};
+
+          map.forEach((dialogId, data) {
+            final type = data['type']?.toString() ?? '';
+            final from = data['from']?.toString() ?? '';
+            final count = data['count'] is int
+                ? data['count'] as int
+                : int.tryParse('${data['count']}') ?? 1;
+            final ts = data['ts'] is int
+                ? data['ts'] as int
+                : int.tryParse('${data['ts']}') ?? 0;
+
+            final other =
+                _otherFromDialogId(dialogId, widget.myUsername) ?? from;
+            if (other.isEmpty) return;
+
+            keep.add(dialogId);
+            final prev = items[dialogId];
+            items[dialogId] = _ChatItem(
+              dialogId: dialogId,
+              otherUser: other,
+              incomingCount: type == 'pending_in'
+                  ? count
+                  : (type == 'come_online' ? 1 : (prev?.incomingCount ?? 0)),
+              comeOnline: type == 'come_online',
+              updatedAt: ts > 0 ? ts : (prev?.updatedAt ?? 0),
+              hasOutbox: prev?.hasOutbox ?? false,
+            );
+          });
+
+          items.removeWhere(
+            (id, item) => !keep.contains(id) && !item.hasOutbox,
           );
+
+          for (final id in items.keys.toList()) {
+            if (!keep.contains(id)) {
+              final prev = items[id]!;
+              items[id] = _ChatItem(
+                dialogId: prev.dialogId,
+                otherUser: prev.otherUser,
+                incomingCount: 0,
+                comeOnline: false,
+                updatedAt: prev.updatedAt,
+                hasOutbox: prev.hasOutbox,
+              );
+            }
+          }
         });
       },
     );
@@ -142,29 +169,46 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   leading: CircleAvatar(
                     backgroundColor: Colors.white12,
                     child: Text(
-                      item.otherUser.isNotEmpty ? item.otherUser[0].toUpperCase() : '?',
+                      item.otherUser.isNotEmpty
+                          ? item.otherUser[0].toUpperCase()
+                          : '?',
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
-                  title: Text('@${item.otherUser}', style: const TextStyle(color: Colors.white)),
+                  title: Text(
+                    '@${item.otherUser}',
+                    style: const TextStyle(color: Colors.white),
+                  ),
                   subtitle: Text(
                     item.subtitle,
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   trailing: item.badge > 0
                       ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: item.comeOnline ? Colors.orangeAccent : Colors.blueAccent,
+                            color: item.comeOnline
+                                ? Colors.orangeAccent
+                                : Colors.blueAccent,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             '${item.badge}',
-                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
                           ),
                         )
                       : (item.hasOutbox
-                          ? const Icon(Icons.schedule, color: Colors.white38, size: 18)
+                          ? const Icon(
+                              Icons.schedule,
+                              color: Colors.white38,
+                              size: 18,
+                            )
                           : null),
                   onTap: () => _open(item),
                 );

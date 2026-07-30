@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/contact_invite_service.dart';
 import '../services/wipe_service.dart';
 import 'pin_setup_screen.dart';
 
@@ -28,6 +29,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker _picker = ImagePicker();
   Uint8List? _avatar;
   String? _error;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -51,14 +53,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('username', username);
-    if (_avatar != null) {
-      await prefs.setString('avatar', base64Encode(_avatar!));
-    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
 
-    if (!mounted) return;
-    Navigator.pop(context);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('username', username);
+      if (_avatar != null) {
+        await prefs.setString('avatar', base64Encode(_avatar!));
+      }
+
+      // обновляем ник в каталоге глобального поиска
+      await ContactInviteService().registerUsername(username);
+
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Ошибка сохранения';
+          _saving = false;
+        });
+      }
+    }
   }
 
   Future<void> _wipeAll() async {
@@ -210,8 +229,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                onPressed: _save,
-                child: const Text('Сохранить', style: TextStyle(fontSize: 16)),
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Сохранить', style: TextStyle(fontSize: 16)),
               ),
             ),
             const SizedBox(height: 16),

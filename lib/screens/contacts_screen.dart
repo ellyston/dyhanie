@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/contact_invite_service.dart';
+import '../services/dialog_signal_service.dart';
 import '../services/outbox_service.dart';
 import 'chat_screen.dart';
+import 'chats_screen.dart';
 
 class ContactsScreen extends StatefulWidget {
   final String myUsername;
@@ -18,11 +22,26 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   List<String> contacts = [];
   List<String> filtered = [];
+  List<String> blocked = [];
   Map<String, String> notes = {};
   Map<String, String> sounds = {};
-  final TextEditingController _searchController = TextEditingController();
 
-  static const Map<String, String> soundPresets = {
+  final _localSearch = TextEditingController();
+  final _globalSearch = TextEditingController();
+  final _invites = ContactInviteService();
+  final _signals = DialogSignalService();
+
+  List<Map<String, dynamic>> incomingInvites = [];
+  List<Map<String, dynamic>> outgoingInvites = [];
+  int incomingMessagesCount = 0;
+  bool globalSending = false;
+
+  StreamSubscription? _inviteSub;
+  StreamSubscription? _outgoingSub;
+  StreamSubscription? _acceptedSub;
+  StreamSubscription? _msgSignalSub;
+
+  static const soundPresets = {
     'default': 'Обычный',
     'soft': 'Тихий',
     'alert': 'Громкий',
@@ -33,7 +52,47 @@ class _ContactsScreenState extends State<ContactsScreen> {
   void initState() {
     super.initState();
     _load();
-    _searchController.addListener(_filter);
+    _localSearch.addListener(_filter);
+
+    _inviteSub = _invites.listenInvites(
+      myUsername: widget.myUsername,
+      onData: (list) {
+        if (!mounted) return;
+        setState(() => incomingInvites = list);
+      },
+    );
+
+    _outgoingSub = _invites.listenOutgoing(
+      myUsername: widget.myUsername,
+      onData: (list) {
+        if (!mounted) return;
+        setState(() => outgoingInvites = list);
+      },
+    );
+
+    _acceptedSub = _invites.listenAccepted(
+      myUsername: widget.myUsername,
+      onAccepted: (by) {
+        _load();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('@$by принял(а) приглашение')),
+        );
+      },
+    );
+
+    _msgSignalSub = _signals.listenMySignals(
+      myUsername: widget.myUsername,
+      onSignals: (map) {
+        int count = 0;
+        map.forEach((_, data) {
+          final type = data['type']?.toString() ?? '';
+          if (type == 'pending_in' || type == 'come_online') count++;
+        });
+        if (!mounted) return;
+        setState(() => incomingMessagesCount = count);
+      },
+    );
   }
 
   Future<void> _load() async {
@@ -41,10 +100,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final raw = prefs.getStringList('contacts') ?? [];
     final notesRaw = prefs.getString('contact_notes');
     final soundsRaw = prefs.getString('contact_sounds');
+    final blockedList = await _invites.getBlocked();
 
     setState(() {
       contacts = raw;
       filtered = raw;
+      blocked = blockedList;
       if (notesRaw != null) {
         notes = Map<String, String>.from(jsonDecode(notesRaw));
       }
@@ -52,6 +113,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         sounds = Map<String, String>.from(jsonDecode(soundsRaw));
       }
     });
+    _filter();
   }
 
   Future<void> _saveNotes() async {
@@ -65,7 +127,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _filter() {
-    final q = _searchController.text.trim().toLowerCase();
+    final q = _localSearch.text.trim().toLowerCase();
     setState(() {
       filtered = q.isEmpty
           ? contacts
@@ -98,6 +160,89 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _globalSearchSubmit() async {
+    final query = _globalSearch.text.trim().toLowerCase();
+    if (query.isEmpty || globalSending) return;
+
+    setState(() => globalSending = true);
+    final result = await _invites.sendInvite(
+      fromUsername: widget.myUsername,
+      toUsername: query,
+    );
+    if (!mounted) return;
+    setState(() => globalSending = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result == 'ok' ? 'Приглашение отправлено @$query' : result),
+      ),
+    );
+    if (result == 'ok') _globalSearch.clear();
+  }
+
+  Future<void> _accept(String from) async {
+    await _invites.acceptInvite(
+      myUsername: widget.myUsername,
+      fromUsername: from,
+    );
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('@$from добавлен в контакты')),
+    );
+  }
+
+  Future<void> _decline(String from) async {
+    await _invites.declineInvite(
+      myUsername: widget.myUsername,
+      fromUsername: from,
+    );
+  }
+
+  Future<void> _cancelOutgoing(String to) async {
+    await _invites.cancelOutgoing(
+      fromUsername: widget.myUsername,
+      toUsername: to,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Приглашение @$to отменено')),
+    );
+  }
+
+  Future<void> _block(String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text('Заблокировать @$name?', style: const TextStyle(color: Colors.white)),
+        content: const Text(
+          'Контакт исчезнет из списка. Приглашения от него будут игнорироваться.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Блок', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _invites.blockUser(name);
+    await _invites.declineInvite(myUsername: widget.myUsername, fromUsername: name);
+    await _load();
+  }
+
+  Future<void> _unblock(String name) async {
+    await _invites.unblockUser(name);
+    await _load();
   }
 
   void _editNote(String name) {
@@ -149,9 +294,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 sounds[name] = e.key;
                 await _saveSounds();
                 if (mounted) setState(() {});
-                if (e.key != 'none') {
-                  SystemSound.play(SystemSoundType.click);
-                }
+                if (e.key != 'none') SystemSound.play(SystemSoundType.click);
                 if (ctx.mounted) Navigator.pop(ctx);
               },
             );
@@ -161,9 +304,60 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  void _contactActions(String name) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline, color: Colors.white70),
+              title: const Text('Написать', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _writeTo(name);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.note_alt_outlined, color: Colors.white70),
+              title: const Text('Заметка', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _editNote(name);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.volume_up, color: Colors.white70),
+              title: const Text('Звук', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickSound(name);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.block, color: Colors.redAccent),
+              title: const Text('Заблокировать', style: TextStyle(color: Colors.redAccent)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _block(name);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
-    _searchController.dispose();
+    _localSearch.dispose();
+    _globalSearch.dispose();
+    _inviteSub?.cancel();
+    _outgoingSub?.cancel();
+    _acceptedSub?.cancel();
+    _msgSignalSub?.cancel();
     super.dispose();
   }
 
@@ -178,13 +372,112 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
       body: Column(
         children: [
+          if (incomingMessagesCount > 0)
+            Material(
+              color: Colors.blueAccent.withValues(alpha: 0.2),
+              child: ListTile(
+                leading: const Icon(Icons.mark_email_unread, color: Colors.lightBlueAccent),
+                title: Text(
+                  'Входящие сообщения: $incomingMessagesCount',
+                  style: const TextStyle(color: Colors.white),
+                ),
+                subtitle: const Text(
+                  'Откройте чат, чтобы прочитать',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.white54),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatsScreen(myUsername: widget.myUsername),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ...incomingInvites.map((inv) {
+            final from = inv['from']?.toString() ?? '';
+            return Material(
+              color: Colors.orange.withValues(alpha: 0.15),
+              child: ListTile(
+                leading: const Icon(Icons.person_add_alt_1, color: Colors.orangeAccent),
+                title: Text(
+                  '@$from приглашает вас в контакты',
+                  style: const TextStyle(color: Colors.white),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: () => _decline(from),
+                      child: const Text('Нет', style: TextStyle(color: Colors.white54)),
+                    ),
+                    TextButton(
+                      onPressed: () => _accept(from),
+                      child: const Text('Да', style: TextStyle(color: Colors.greenAccent)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+          ...outgoingInvites.map((inv) {
+            final to = inv['to']?.toString() ?? '';
+            return Material(
+              color: Colors.white.withValues(alpha: 0.04),
+              child: ListTile(
+                leading: const Icon(Icons.hourglass_top, color: Colors.white54),
+                title: Text('Ожидает @$to', style: const TextStyle(color: Colors.white70)),
+                trailing: TextButton(
+                  onPressed: () => _cancelOutgoing(to),
+                  child: const Text('Отменить', style: TextStyle(color: Colors.orangeAccent)),
+                ),
+              ),
+            );
+          }),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
             child: TextField(
-              controller: _searchController,
+              controller: _globalSearch,
+              style: const TextStyle(color: Colors.white),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')),
+              ],
+              decoration: InputDecoration(
+                hintText: 'Глобальный поиск по username',
+                hintStyle: const TextStyle(color: Colors.white30),
+                prefixIcon: const Icon(Icons.travel_explore, color: Colors.white38),
+                suffixIcon: globalSending
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.send, color: Colors.white70),
+                        onPressed: _globalSearchSubmit,
+                      ),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.06),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onSubmitted: (_) => _globalSearchSubmit(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+            child: TextField(
+              controller: _localSearch,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Поиск...',
+                hintText: 'Поиск по контактам...',
                 hintStyle: const TextStyle(color: Colors.white30),
                 prefixIcon: const Icon(Icons.search, color: Colors.white38),
                 filled: true,
@@ -206,8 +499,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     itemBuilder: (context, index) {
                       final name = filtered[index];
                       final note = notes[name] ?? '';
-                      final sound = sounds[name] ?? 'default';
-
                       return Dismissible(
                         key: Key('contact_$name'),
                         direction: DismissDirection.endToStart,
@@ -230,34 +521,37 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           subtitle: note.isEmpty
                               ? null
                               : Text(note, style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                tooltip: soundPresets[sound],
-                                icon: Icon(
-                                  sound == 'none' ? Icons.volume_off : Icons.volume_up,
-                                  color: Colors.white54,
-                                  size: 20,
-                                ),
-                                onPressed: () => _pickSound(name),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.note_alt_outlined, color: Colors.white54, size: 20),
-                                onPressed: () => _editNote(name),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.chat_bubble_outline, color: Colors.white70),
-                                onPressed: () => _writeTo(name),
-                              ),
-                            ],
+                          trailing: IconButton(
+                            icon: const Icon(Icons.more_vert, color: Colors.white54),
+                            onPressed: () => _contactActions(name),
                           ),
                           onTap: () => _writeTo(name),
+                          onLongPress: () => _contactActions(name),
                         ),
                       );
                     },
                   ),
           ),
+          if (blocked.isNotEmpty)
+            ExpansionTile(
+              title: Text(
+                'Чёрный список (${blocked.length})',
+                style: const TextStyle(color: Colors.white54),
+              ),
+              collapsedIconColor: Colors.white54,
+              iconColor: Colors.white70,
+              children: blocked
+                  .map(
+                    (b) => ListTile(
+                      title: Text('@$b', style: const TextStyle(color: Colors.white70)),
+                      trailing: TextButton(
+                        onPressed: () => _unblock(b),
+                        child: const Text('Разблок', style: TextStyle(color: Colors.white54)),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
         ],
       ),
     );
