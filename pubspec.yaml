@@ -21,6 +21,7 @@ dependencies:
   path_provider: ^2.1.4
   http: ^1.2.2
   flutter_webrtc: ^0.12.1+hotfix.1
+  mobile_scanner: ^5.2.3
 
 dev_dependencies:
   flutter_test:
@@ -29,3 +30,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+http: ^1.2.0

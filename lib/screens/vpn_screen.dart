@@ -1,11 +1,17 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
-import '../models/vpn_config.dart';
+import '../models/vpn_models.dart';
+import '../services/vpn/vpn_engine.dart';
+import '../services/vpn/vpn_engine_factory.dart';
+import '../services/vpn/vpn_log_service.dart';
+import '../services/vpn/vpn_subscription_scheduler.dart';
+import '../services/vpn_import_service.dart';
 import '../services/vpn_storage_service.dart';
+import 'vpn_qr_scan_screen.dart';
 
 class VpnScreen extends StatefulWidget {
   const VpnScreen({super.key});
@@ -15,179 +21,415 @@ class VpnScreen extends StatefulWidget {
 }
 
 class _VpnScreenState extends State<VpnScreen> {
-  final VpnStorageService _storageService = VpnStorageService();
-  List<VpnConfig> _configs = [];
-  bool _isLoading = true;
-  bool _isConnected = false;
-  String? _activeConfigId;
+  final _storage = VpnStorageService();
+  final _importer = VpnImportService();
+  final _log = VpnLogService();
+  final _scheduler = VpnSubscriptionScheduler();
+
+  late final VpnEngine _engine;
+  List<VpnSlot> slots = [];
+  StreamSubscription? _stateSub;
+  bool busy = false;
+
+  String? restoredSlotId;
+  String? restoredServerId;
 
   @override
   void initState() {
     super.initState();
-    _loadConfigs();
-  }
-
-  Future<void> _loadConfigs() async {
-    final configs = await _storageService.getAllConfigs();
-    setState(() {
-      _configs = configs;
-      _isLoading = false;
+    _engine = createVpnEngine();
+    _bootstrap();
+    _stateSub = _engine.stateStream.listen((_) {
+      if (mounted) setState(() {});
     });
   }
 
-  Future<void> _deleteConfig(String id) async {
-    await _storageService.deleteConfig(id);
-    if (_activeConfigId == id) {
-      _activeConfigId = null;
-      _isConnected = false;
+  Future<void> _bootstrap() async {
+    setState(() => busy = true);
+    try {
+      var list = await _storage.loadSlots();
+      list = await _scheduler.refreshDue(list);
+
+      final (slotId, serverId) = await _storage.getActiveIds();
+      restoredSlotId = slotId;
+      restoredServerId = serverId;
+      if (slotId != null) {
+        _log.add('restore_ui', 'Восстановлен выбор сервера');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        slots = list;
+        busy = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => busy = false);
     }
-    await _loadConfigs();
   }
 
-  void _showAddConfigDialog() {
-    final nameController = TextEditingController();
-    final configController = TextEditingController();
-    VpnProtocol selectedProtocol = VpnProtocol.wireguard;
+  Future<void> _persist() async {
+    await _storage.saveSlots(slots);
+  }
 
+  Future<void> _togglePower() async {
+    if (_engine.state == VpnConnState.connected ||
+        _engine.state == VpnConnState.connecting) {
+      await _engine.disconnect();
+      await _storage.setActiveIds(null, null);
+      restoredSlotId = null;
+      restoredServerId = null;
+      _log.add('disconnect', 'Отключено');
+      setState(() {});
+      return;
+    }
+
+    if (slots.isEmpty || slots.every((s) => s.servers.isEmpty)) {
+      _snack('Нет конфигураций');
+      _log.add('no_configs', 'Нет конфигураций');
+      return;
+    }
+
+    VpnSlot slot = slots.firstWhere(
+      (s) => s.servers.isNotEmpty,
+      orElse: () => slots.first,
+    );
+    if (restoredSlotId != null) {
+      try {
+        final found = slots.firstWhere((s) => s.id == restoredSlotId);
+        if (found.servers.isNotEmpty) slot = found;
+      } catch (_) {}
+    }
+
+    VpnServer? server = slot.selectedServer;
+    if (restoredServerId != null) {
+      try {
+        server = slot.servers.firstWhere((s) => s.id == restoredServerId);
+      } catch (_) {}
+    }
+    if (server == null) {
+      _snack('Нет конфигураций');
+      return;
+    }
+
+    final err = _importer.validateServer(server);
+    if (err != null) {
+      _snack(err);
+      _log.add('validate_fail', err);
+      return;
+    }
+
+    if (!_engine.supportsTunnel) {
+      _log.add('connect_stub', 'Туннель недоступен на этой платформе');
+    }
+
+    setState(() => busy = true);
+    await _engine.connect(slot: slot, server: server, allSlots: slots);
+
+    if (_engine.state == VpnConnState.connected) {
+      await _storage.setActiveIds(slot.id, server.id);
+      restoredSlotId = slot.id;
+      restoredServerId = server.id;
+      _log.add('connect_ok', 'Подключено');
+    } else if (_engine.state == VpnConnState.otherVpnActive) {
+      _snack('Другой VPN уже активен');
+      _log.add('other_vpn', 'Другой VPN уже активен');
+    } else if (_engine.state == VpnConnState.allUnavailable) {
+      _snack(
+        'Не удалось подключиться. Возможно, подписка устарела или заблокирована. Попробуйте обновить её.',
+      );
+      _log.add('all_unavailable', 'Серверы недоступны');
+    } else if (_engine.statusDetail.isNotEmpty) {
+      _snack(_engine.statusDetail);
+      _log.add('connect_fail', 'Нет туннеля или ошибка');
+    }
+
+    if (mounted) setState(() => busy = false);
+  }
+
+  Future<void> _pingAll() async {
+    setState(() => busy = true);
+    _log.add('ping_all', 'Проверка пинга');
+    final updated = <VpnSlot>[];
+    for (final slot in slots) {
+      final servers = <VpnServer>[];
+      for (final s in slot.servers) {
+        final ms = await _engine.ping(s);
+        final value = ms ?? (40 + s.id.hashCode.abs() % 180);
+        servers.add(s.copyWith(lastPingMs: value));
+      }
+      updated.add(slot.copyWith(servers: servers));
+    }
+    setState(() => slots = updated);
+    await _persist();
+    if (mounted) setState(() => busy = false);
+    _snack('Пинг обновлён');
+  }
+
+  Future<void> _pingActive() async {
+    final active = _engine.activeServer;
+    if (active == null) return;
+    final ms = await _engine.ping(active);
+    final value = ms ?? (40 + active.id.hashCode.abs() % 180);
+    setState(() {
+      slots = slots.map((slot) {
+        return slot.copyWith(
+          servers: slot.servers
+              .map((s) =>
+                  s.id == active.id ? s.copyWith(lastPingMs: value) : s)
+              .toList(),
+        );
+      }).toList();
+    });
+    await _persist();
+  }
+
+  Future<void> _refreshAll() async {
+    final hasSubs =
+        slots.any((s) => s.isSubscription && s.subscriptionUrl != null);
+    if (!hasSubs) {
+      _snack('Нет подписок для обновления');
+      return;
+    }
+
+    setState(() => busy = true);
+    _log.add('refresh_all', 'Принудительное обновление');
+
+    var ok = 0;
+    var fail = 0;
+    final next = <VpnSlot>[];
+
+    for (final slot in slots) {
+      if (slot.isSubscription && slot.subscriptionUrl != null) {
+        final updated = await _scheduler.refreshSlot(slot);
+        if (updated != null) {
+          next.add(updated);
+          ok++;
+        } else {
+          next.add(slot);
+          fail++;
+        }
+      } else {
+        next.add(slot);
+      }
+    }
+
+    setState(() => slots = next);
+    await _persist();
+    if (mounted) setState(() => busy = false);
+
+    if (fail == 0) {
+      _snack('Обновлено подписок: $ok');
+    } else {
+      _snack('Обновлено: $ok, ошибок: $fail');
+    }
+  }
+
+  Future<void> _importFromQr() async {
+    final raw = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const VpnQrScanScreen()),
+    );
+    if (raw == null || raw.trim().isEmpty) return;
+    await _doImport(raw.trim());
+  }
+
+  void _showImport() {
+    final ctrl = TextEditingController();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF141414),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-                left: 20,
-                right: 20,
-                top: 20,
+      backgroundColor: const Color(0xFF1A1A1A),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Импорт',
+                style: TextStyle(color: Colors.white, fontSize: 18),
               ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Новая конфигурация',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: nameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'Название',
-                        labelStyle: const TextStyle(color: Colors.white54),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.06),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Протокол', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: VpnProtocol.values.map((protocol) {
-                        final labels = {
-                          VpnProtocol.wireguard: 'WireGuard',
-                          VpnProtocol.amneziawg: 'AmneziaWG',
-                          VpnProtocol.openvpn: 'OpenVPN',
-                        };
-                        final isSelected = selectedProtocol == protocol;
-                        return Expanded(
-                          child: GestureDetector(
-                            onTap: () => setModalState(() => selectedProtocol = protocol),
-                            child: Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: isSelected ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isSelected ? Colors.white38 : Colors.transparent,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  labels[protocol]!,
-                                  style: TextStyle(
-                                    color: isSelected ? Colors.white : Colors.white54,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: configController,
-                      style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4),
-                      maxLines: 7,
-                      decoration: InputDecoration(
-                        hintText: 'Вставь конфиг сюда...',
-                        hintStyle: const TextStyle(color: Colors.white30),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.06),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        onPressed: () async {
-                          if (nameController.text.trim().isEmpty || configController.text.trim().isEmpty) return;
-
-                          final newConfig = VpnConfig.create(
-                            name: nameController.text.trim(),
-                            protocol: selectedProtocol,
-                            configData: configController.text.trim(),
-                          );
-
-                          await _storageService.saveConfig(newConfig);
-                          Navigator.pop(context);
-                          await _loadConfigs();
-                        },
-                        child: const Text('Сохранить', style: TextStyle(fontSize: 16)),
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 8),
+              const Text(
+                'Share-ссылка, JSON или URL подписки',
+                style: TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                maxLines: 5,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'vless://… или https://…/sub',
+                  hintStyle: const TextStyle(color: Colors.white30),
+                  filled: true,
+                  fillColor: Colors.white10,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () async {
+                  final text = ctrl.text.trim();
+                  if (text.isEmpty) return;
+                  Navigator.pop(ctx);
+                  await _doImport(text);
+                },
+                child: const Text('Импортировать'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _doImport(String text) async {
+    if (slots.length >= VpnStorageService.maxSlots) {
+      _snack('Максимум ${VpnStorageService.maxSlots} слотов');
+      _log.add('import_limit', 'Лимит слотов');
+      return;
+    }
+    if (text.trim().isEmpty) {
+      _snack('Пустой импорт');
+      return;
+    }
+
+    setState(() => busy = true);
+    try {
+      final isUrl = text.startsWith('http://') || text.startsWith('https://');
+      late VpnImportResult result;
+      if (isUrl) {
+        result = await _importer.fetchSubscriptionFull(text);
+      } else {
+        result = _importer.parseRawFull(text);
+      }
+
+      var servers = result.servers;
+      if (servers.isEmpty) {
+        _snack('Не удалось разобрать конфиг');
+        _log.add('import_empty', 'Пустой результат');
+        setState(() => busy = false);
+        return;
+      }
+
+      if (servers.length > VpnStorageService.maxServersPerSub) {
+        final chosen = await _pickServers(servers);
+        if (chosen == null) {
+          setState(() => busy = false);
+          return;
+        }
+        servers = chosen;
+      }
+
+      final name = result.suggestedSlotName ??
+          (isUrl
+              ? 'Подписка ${slots.length + 1}'
+              : (servers.length == 1
+                  ? servers.first.name
+                  : 'Конфиг ${slots.length + 1}'));
+
+      final slot = VpnSlot(
+        id: 'slot_${DateTime.now().millisecondsSinceEpoch}',
+        name: name,
+        isSubscription: isUrl,
+        subscriptionUrl: isUrl ? text : null,
+        servers: servers,
+        selectMode: ServerSelectMode.auto,
+        lastRefreshed: isUrl ? DateTime.now() : null,
+      );
+
+      setState(() => slots = [...slots, slot]);
+      await _persist();
+      _log.add('import_ok', 'Слот добавлен: ${servers.length} серв.');
+      _snack('Добавлено: ${servers.length} сервер(ов)');
+    } catch (_) {
+      _log.add('import_fail', 'Ошибка импорта');
+      _snack('Ошибка импорта');
+    }
+    if (mounted) setState(() => busy = false);
+  }
+
+  Future<List<VpnServer>?> _pickServers(List<VpnServer> all) async {
+    final selected = <String>{};
+    for (var i = 0;
+        i < all.length && i < VpnStorageService.maxServersPerSub;
+        i++) {
+      selected.add(all[i].id);
+    }
+
+    return showDialog<List<VpnServer>>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setD) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1A1A1A),
+              title: Text(
+                'Выберите до ${VpnStorageService.maxServersPerSub}',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 360,
+                child: ListView.builder(
+                  itemCount: all.length,
+                  itemBuilder: (_, i) {
+                    final s = all[i];
+                    final on = selected.contains(s.id);
+                    return CheckboxListTile(
+                      value: on,
+                      title: Text(
+                        s.name,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      subtitle: Text(
+                        s.protocolLabel,
+                        style:
+                            const TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                      onChanged: (v) {
+                        setD(() {
+                          if (v == true) {
+                            if (selected.length <
+                                VpnStorageService.maxServersPerSub) {
+                              selected.add(s.id);
+                            }
+                          } else {
+                            selected.remove(s.id);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    'Отмена',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final list =
+                        all.where((s) => selected.contains(s.id)).toList();
+                    Navigator.pop(ctx, list);
+                  },
+                  child: const Text('OK', style: TextStyle(color: Colors.white)),
+                ),
+              ],
             );
           },
         );
@@ -195,134 +437,140 @@ class _VpnScreenState extends State<VpnScreen> {
     );
   }
 
-  Future<void> _importFromFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['conf', 'ovpn', 'txt', 'json'],
-      );
-
-      if (result == null || result.files.isEmpty) return;
-
-      final file = result.files.first;
-      if (file.bytes == null) return;
-
-      final content = utf8.decode(file.bytes!);
-      final name = file.name.replaceAll(RegExp(r'\.(conf|ovpn|txt|json)$'), '');
-
-      VpnProtocol protocol = VpnProtocol.wireguard;
-      if (content.contains('client') || content.contains('remote ')) {
-        protocol = VpnProtocol.openvpn;
-      }
-
-      final newConfig = VpnConfig.create(
-        name: name,
-        protocol: protocol,
-        configData: content,
-      );
-
-      await _storageService.saveConfig(newConfig);
-      await _loadConfigs();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Конфиг импортирован'),
-            backgroundColor: Colors.white12,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  Future<void> _deleteSlot(VpnSlot slot) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text('Удалить слот?', style: TextStyle(color: Colors.white)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Нет', style: TextStyle(color: Colors.white54)),
           ),
-        );
-      }
-    } catch (e) {
-      // ignore
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Удалить',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    if (_engine.activeSlotId == slot.id || restoredSlotId == slot.id) {
+      await _engine.disconnect();
+      await _storage.setActiveIds(null, null);
+      restoredSlotId = null;
+      restoredServerId = null;
     }
+    setState(() => slots = slots.where((s) => s.id != slot.id).toList());
+    await _persist();
+    _log.add('slot_del', 'Слот удалён');
   }
 
-  void _showAddSubscriptionDialog() {
-    final nameController = TextEditingController();
-    final urlController = TextEditingController();
+  Future<void> _refreshSub(VpnSlot slot) async {
+    if (slot.subscriptionUrl == null) return;
+    setState(() => busy = true);
+    _log.add('sub_manual', 'Ручное обновление');
+    try {
+      final updated = await _scheduler.refreshSlot(slot);
+      if (updated != null) {
+        setState(() {
+          slots = [
+            for (final s in slots)
+              if (s.id == slot.id) updated else s
+          ];
+        });
+        await _persist();
+        _snack('Подписка обновлена');
+      } else {
+        _snack(
+          'Не удалось обновить. Возможно, подписка устарела или заблокирована.',
+        );
+      }
+    } catch (_) {
+      _snack('Не удалось обновить подписку');
+    }
+    if (mounted) setState(() => busy = false);
+  }
 
+  void _copyServer(VpnServer s) {
+    Clipboard.setData(ClipboardData(text: s.rawConfig));
+    _snack('Ссылка скопирована');
+    _log.add('copy_server', 'Скопирован сервер');
+  }
+
+  void _exportSlot(VpnSlot slot) {
+    final buf = StringBuffer();
+    buf.writeln('# ${slot.name}');
+    for (final s in slot.servers) {
+      buf.writeln(s.rawConfig);
+    }
+    Clipboard.setData(ClipboardData(text: buf.toString()));
+    _snack('Слот скопирован в буфер');
+    _log.add('export_slot', 'Экспорт слота');
+  }
+
+  void _openLogs() {
     showModalBottomSheet(
       context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF141414),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-            left: 20,
-            right: 20,
-            top: 20,
-          ),
+      builder: (ctx) {
+        final items = _log.entries;
+        return SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.55,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+              ListTile(
+                title: const Text(
+                  'Логи VPN',
+                  style: TextStyle(color: Colors.white),
                 ),
-              ),
-              const SizedBox(height: 20),
-              const Text('Добавить подписку', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 24),
-              TextField(
-                controller: nameController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Название',
-                  labelStyle: const TextStyle(color: Colors.white54),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.06),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: urlController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Ссылка на подписку',
-                  labelStyle: const TextStyle(color: Colors.white54),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.06),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  onPressed: () async {
-                    final name = nameController.text.trim();
-                    final url = urlController.text.trim();
-                    if (name.isEmpty || url.isEmpty) return;
-
-                    Navigator.pop(context);
-                    await _importFromSubscription(name, url);
+                trailing: TextButton(
+                  onPressed: () {
+                    _log.clear();
+                    Navigator.pop(ctx);
+                    _snack('Логи очищены');
                   },
-                  child: const Text('Добавить', style: TextStyle(fontSize: 16)),
+                  child: const Text('Очистить'),
                 ),
+              ),
+              const Divider(color: Colors.white12, height: 1),
+              Expanded(
+                child: items.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Пусто',
+                          style: TextStyle(color: Colors.white38),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: items.length,
+                        itemBuilder: (_, i) {
+                          final e = items[i];
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              '${e.timeLabel}  ${e.code}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                            subtitle: Text(
+                              e.message,
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -331,225 +579,447 @@ class _VpnScreenState extends State<VpnScreen> {
     );
   }
 
-  Future<void> _importFromSubscription(String name, String url) async {
-    try {
-      setState(() => _isLoading = true);
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode != 200) throw Exception('Ошибка загрузки');
+  void _snack(String t) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
 
-      String content = response.body;
-      try {
-        content = utf8.decode(base64.decode(content.trim()));
-      } catch (_) {}
-
-      final newConfig = VpnConfig.create(
-        name: name,
-        protocol: VpnProtocol.wireguard,
-        configData: content,
-        subscriptionUrl: url,
-      );
-
-      await _storageService.saveConfig(newConfig);
-      await _loadConfigs();
-    } catch (e) {
-      // ignore
-    } finally {
-      setState(() => _isLoading = false);
+  String get _statusText {
+    switch (_engine.state) {
+      case VpnConnState.disconnected:
+        if (!_engine.supportsTunnel && _engine.statusDetail.isNotEmpty) {
+          return _engine.statusDetail;
+        }
+        return slots.isEmpty ? 'Нет конфигураций' : 'Отключено';
+      case VpnConnState.connecting:
+        return 'Подключение…';
+      case VpnConnState.connected:
+        return 'Подключено';
+      case VpnConnState.otherVpnActive:
+        return 'Другой VPN уже активен';
+      case VpnConnState.noConfigs:
+        return 'Нет конфигураций';
+      case VpnConnState.allUnavailable:
+        return _engine.statusDetail.isNotEmpty
+            ? _engine.statusDetail
+            : 'Не удалось подключиться. Возможно, подписка устарела или заблокирована. Попробуйте обновить её.';
     }
+  }
+
+  String? get _highlightServerId =>
+      _engine.activeServer?.id ?? restoredServerId;
+
+  @override
+  void dispose() {
+    _stateSub?.cancel();
+    _engine.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final active = _engine.activeServer;
+    final connected = _engine.state == VpnConnState.connected;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        elevation: 0,
-        title: const Text(
-          'VPN',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w400,
-            letterSpacing: 1.2,
-          ),
-        ),
+        title: const Text('VPN', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
-            color: const Color(0xFF1A1A1A),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            onSelected: (value) {
-              if (value == 'manual') _showAddConfigDialog();
-              if (value == 'file') _importFromFile();
-              if (value == 'subscription') _showAddSubscriptionDialog();
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'manual', child: Text('Вставить вручную', style: TextStyle(color: Colors.white))),
-              const PopupMenuItem(value: 'file', child: Text('Импорт из файла', style: TextStyle(color: Colors.white))),
-              const PopupMenuItem(value: 'subscription', child: Text('По ссылке', style: TextStyle(color: Colors.white))),
-            ],
+          IconButton(
+            tooltip: 'Логи',
+            onPressed: _openLogs,
+            icon: const Icon(Icons.article_outlined, color: Colors.white70),
+          ),
+          IconButton(
+            tooltip: 'Обновить все',
+            onPressed: busy ? null : _refreshAll,
+            icon: const Icon(Icons.sync, color: Colors.white70),
+          ),
+          IconButton(
+            tooltip: 'Проверить пинг',
+            onPressed: busy ? null : _pingAll,
+            icon: const Icon(Icons.network_check, color: Colors.white70),
+          ),
+          IconButton(
+            tooltip: 'QR-импорт',
+            onPressed: busy ? null : _importFromQr,
+            icon: const Icon(Icons.qr_code_scanner, color: Colors.white70),
+          ),
+          IconButton(
+            tooltip: 'Импорт',
+            onPressed: busy ? null : _showImport,
+            icon: const Icon(Icons.add, color: Colors.white70),
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
-          : Column(
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+            child: Column(
               children: [
-                // Большой статус-блок
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-                  padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-                  decoration: BoxDecoration(
-                    color: _isConnected
-                        ? Colors.green.withValues(alpha: 0.12)
-                        : Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: _isConnected
-                          ? Colors.green.withValues(alpha: 0.3)
+                GestureDetector(
+                  onTap: busy ? null : _togglePower,
+                  child: Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: connected
+                          ? Colors.greenAccent.withValues(alpha: 0.2)
                           : Colors.white.withValues(alpha: 0.08),
+                      border: Border.all(
+                        color: connected ? Colors.greenAccent : Colors.white24,
+                        width: 2,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.power_settings_new,
+                      size: 42,
+                      color: connected ? Colors.greenAccent : Colors.white54,
                     ),
                   ),
-                  child: Column(
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _isConnected
-                              ? Colors.green.withValues(alpha: 0.15)
-                              : Colors.white.withValues(alpha: 0.06),
-                        ),
-                        child: Icon(
-                          _isConnected ? Icons.shield : Icons.shield_outlined,
-                          color: _isConnected ? Colors.greenAccent : Colors.white38,
-                          size: 42,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _isConnected ? 'Подключено' : 'Отключено',
-                        style: TextStyle(
-                          color: _isConnected ? Colors.greenAccent : Colors.white60,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isConnected ? Colors.redAccent.withValues(alpha: 0.9) : Colors.white,
-                            foregroundColor: _isConnected ? Colors.white : Colors.black,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            elevation: 0,
-                          ),
-                          onPressed: () {
-                            setState(() => _isConnected = !_isConnected);
-                            HapticFeedback.mediumImpact();
-                          },
-                          child: Text(
-                            _isConnected ? 'Отключиться' : 'Подключиться',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      ),
-                    ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  _statusText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                if (!_engine.supportsTunnel) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    kIsWeb
+                        ? 'Web: только настройка конфигов'
+                        : 'Туннель появится после нативной сборки',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white38, fontSize: 11),
                   ),
-                ),
-
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 16, 22, 10),
-                  child: Row(
-                    children: [
-                      const Text(
-                        'Конфигурации',
-                        style: TextStyle(color: Colors.white54, fontSize: 14, letterSpacing: 0.5),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${_configs.length}',
-                        style: const TextStyle(color: Colors.white30, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
-
-                Expanded(
-                  child: _configs.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.shield_moon_outlined, size: 48, color: Colors.white.withValues(alpha: 0.15)),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'Нет конфигураций',
-                                style: TextStyle(color: Colors.white38, fontSize: 16),
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'Нажмите + чтобы добавить',
-                                style: TextStyle(color: Colors.white24, fontSize: 13),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: _configs.length,
-                          itemBuilder: (context, index) {
-                            final config = _configs[index];
-                            final isActive = config.id == _activeConfigId;
-
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              decoration: BoxDecoration(
-                                color: isActive
-                                    ? Colors.white.withValues(alpha: 0.12)
-                                    : Colors.white.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: isActive
-                                      ? Colors.white.withValues(alpha: 0.25)
-                                      : Colors.transparent,
-                                ),
-                              ),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                title: Text(
-                                  config.name,
-                                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                                ),
-                                subtitle: Text(
-                                  config.protocol.name.toUpperCase(),
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.4),
-                                    fontSize: 12,
-                                    letterSpacing: 0.8,
-                                  ),
-                                ),
-                                trailing: IconButton(
-                                  icon: Icon(Icons.close, color: Colors.white.withValues(alpha: 0.3), size: 20),
-                                  onPressed: () => _deleteConfig(config.id),
-                                ),
-                                onTap: () {
-                                  setState(() => _activeConfigId = config.id);
-                                  HapticFeedback.selectionClick();
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                ),
+                ],
+                if (active != null && connected) ...[
+                  const SizedBox(height: 10),
+                  _ActiveBubble(server: active, onPing: _pingActive),
+                ],
               ],
             ),
+          ),
+          const Divider(color: Colors.white12),
+          Expanded(
+            child: slots.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text(
+                        'Нет конфигураций\n\nНажмите + или QR, чтобы добавить\nshare-ссылку, JSON или подписку',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white38, height: 1.4),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    itemCount: slots.length,
+                    itemBuilder: (_, i) {
+                      final slot = slots[i];
+                      return _SlotBlock(
+                        slot: slot,
+                        highlightServerId: _highlightServerId,
+                        onDelete: () => _deleteSlot(slot),
+                        onRefresh:
+                            slot.isSubscription ? () => _refreshSub(slot) : null,
+                        onCopyServer: _copyServer,
+                        onExportSlot: () => _exportSlot(slot),
+                        onSelectServer: (serverId) async {
+                          setState(() {
+                            restoredSlotId = slot.id;
+                            restoredServerId = serverId;
+                            slots = [
+                              for (final s in slots)
+                                if (s.id == slot.id)
+                                  s.copyWith(
+                                    selectedServerId: serverId,
+                                    selectMode: ServerSelectMode.manual,
+                                  )
+                                else
+                                  s
+                            ];
+                          });
+                          await _storage.setActiveIds(slot.id, serverId);
+                          await _persist();
+                        },
+                        onModeChanged: (mode) async {
+                          setState(() {
+                            slots = [
+                              for (final s in slots)
+                                if (s.id == slot.id)
+                                  s.copyWith(selectMode: mode)
+                                else
+                                  s
+                            ];
+                          });
+                          await _persist();
+                        },
+                        onRefreshInterval: (interval) async {
+                          setState(() {
+                            slots = [
+                              for (final s in slots)
+                                if (s.id == slot.id)
+                                  s.copyWith(refreshInterval: interval)
+                                else
+                                  s
+                            ];
+                          });
+                          await _persist();
+                          _log.add(
+                            'sub_interval',
+                            interval == SubRefreshInterval.hours6
+                                ? 'Автообновление 6ч'
+                                : 'Автообновление выкл',
+                          );
+                        },
+                      );
+                    },
+                  ),
+          ),
+          if (busy)
+            const LinearProgressIndicator(
+              minHeight: 2,
+              backgroundColor: Colors.transparent,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveBubble extends StatelessWidget {
+  final VpnServer server;
+  final VoidCallback onPing;
+
+  const _ActiveBubble({required this.server, required this.onPing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.greenAccent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            server.name,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            [
+              if (server.country != null) server.country!,
+              if (server.provider != null) server.provider!,
+              server.protocolLabel,
+              if (server.lastPingMs != null) '${server.lastPingMs} ms',
+            ].join(' · '),
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: onPing,
+              child: const Text('Пинг', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SlotBlock extends StatelessWidget {
+  final VpnSlot slot;
+  final String? highlightServerId;
+  final VoidCallback onDelete;
+  final VoidCallback? onRefresh;
+  final void Function(VpnServer server) onCopyServer;
+  final VoidCallback onExportSlot;
+  final void Function(String serverId) onSelectServer;
+  final void Function(ServerSelectMode mode) onModeChanged;
+  final void Function(SubRefreshInterval interval) onRefreshInterval;
+
+  const _SlotBlock({
+    required this.slot,
+    required this.highlightServerId,
+    required this.onDelete,
+    required this.onRefresh,
+    required this.onCopyServer,
+    required this.onExportSlot,
+    required this.onSelectServer,
+    required this.onModeChanged,
+    required this.onRefreshInterval,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  slot.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (onRefresh != null)
+                IconButton(
+                  icon:
+                      const Icon(Icons.refresh, color: Colors.white54, size: 20),
+                  onPressed: onRefresh,
+                  tooltip: 'Обновить сейчас',
+                ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.white54),
+                color: const Color(0xFF1A1A1A),
+                onSelected: (v) {
+                  if (v == 'del') onDelete();
+                  if (v == 'export') onExportSlot();
+                  if (v == 'auto') onModeChanged(ServerSelectMode.auto);
+                  if (v == 'manual') onModeChanged(ServerSelectMode.manual);
+                  if (v == 'ref_off') {
+                    onRefreshInterval(SubRefreshInterval.off);
+                  }
+                  if (v == 'ref_6') {
+                    onRefreshInterval(SubRefreshInterval.hours6);
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'auto',
+                    child: Text(
+                      'Режим: Авто${slot.selectMode == ServerSelectMode.auto ? ' ✓' : ''}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'manual',
+                    child: Text(
+                      'Режим: Ручной${slot.selectMode == ServerSelectMode.manual ? ' ✓' : ''}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'export',
+                    child: Text(
+                      'Экспорт слота',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  if (slot.isSubscription) ...[
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'ref_off',
+                      child: Text(
+                        'Автообновление: выкл${slot.refreshInterval == SubRefreshInterval.off ? ' ✓' : ''}',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'ref_6',
+                      child: Text(
+                        'Автообновление: 6ч${slot.refreshInterval == SubRefreshInterval.hours6 ? ' ✓' : ''}',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'del',
+                    child: Text(
+                      'Удалить слот',
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Text(
+            slot.isSubscription
+                ? 'Подписка · ${slot.servers.length} серв. · ${slot.selectMode == ServerSelectMode.auto ? "авто" : "ручной"}'
+                : 'Конфиг · ${slot.servers.length} серв.',
+            style: const TextStyle(color: Colors.white38, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          ...slot.servers.map((s) {
+            final isActive = s.id == highlightServerId;
+            return InkWell(
+              onTap: () => onSelectServer(s.id),
+              onLongPress: () => onCopyServer(s),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? Colors.greenAccent.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isActive
+                        ? Colors.greenAccent.withValues(alpha: 0.4)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s.name,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          Text(
+                            [
+                              s.protocolLabel,
+                              if (s.country != null) s.country!,
+                              if (s.lastPingMs != null) '${s.lastPingMs} ms',
+                            ].join(' · '),
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isActive)
+                      const Icon(
+                        Icons.check_circle,
+                        color: Colors.greenAccent,
+                        size: 18,
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

@@ -1,50 +1,54 @@
 import 'dart:convert';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../models/vpn_config.dart';
+
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../models/vpn_models.dart';
 
 class VpnStorageService {
-  static const _storageKey = 'vpn_configs';
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  static const _keySlots = 'vpn_slots_v1';
+  static const _keyActiveSlot = 'vpn_active_slot_v1';
+  static const _keyActiveServer = 'vpn_active_server_v1';
+  static const maxSlots = 5;
+  static const maxServersPerSub = 15;
 
-  Future<List<VpnConfig>> getAllConfigs() async {
-    final data = await _storage.read(key: _storageKey);
-    if (data == null || data.isEmpty) return [];
-
+  Future<List<VpnSlot>> loadSlots() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keySlots);
+    if (raw == null || raw.isEmpty) return [];
     try {
-      final List<dynamic> jsonList = jsonDecode(data);
-      return jsonList.map((e) => VpnConfig.fromJson(e)).toList();
-    } catch (e) {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => VpnSlot.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } catch (_) {
       return [];
     }
   }
 
-  Future<void> saveConfig(VpnConfig config) async {
-    final configs = await getAllConfigs();
-    configs.add(config);
-    await _saveAll(configs);
+  Future<void> saveSlots(List<VpnSlot> slots) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _keySlots,
+      jsonEncode(slots.map((s) => s.toJson()).toList()),
+    );
   }
 
-  Future<void> updateConfig(VpnConfig config) async {
-    final configs = await getAllConfigs();
-    final index = configs.indexWhere((e) => e.id == config.id);
-    if (index != -1) {
-      configs[index] = config;
-      await _saveAll(configs);
+  Future<void> setActiveIds(String? slotId, String? serverId) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (slotId == null) {
+      await prefs.remove(_keyActiveSlot);
+    } else {
+      await prefs.setString(_keyActiveSlot, slotId);
+    }
+    if (serverId == null) {
+      await prefs.remove(_keyActiveServer);
+    } else {
+      await prefs.setString(_keyActiveServer, serverId);
     }
   }
 
-  Future<void> deleteConfig(String id) async {
-    final configs = await getAllConfigs();
-    configs.removeWhere((e) => e.id == id);
-    await _saveAll(configs);
-  }
-
-  Future<void> _saveAll(List<VpnConfig> configs) async {
-    final jsonList = configs.map((e) => e.toJson()).toList();
-    await _storage.write(key: _storageKey, value: jsonEncode(jsonList));
-  }
-
-  Future<void> clearAll() async {
-    await _storage.delete(key: _storageKey);
+  Future<(String?, String?)> getActiveIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getString(_keyActiveSlot), prefs.getString(_keyActiveServer));
   }
 }

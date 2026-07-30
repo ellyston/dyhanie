@@ -2,13 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import '../services/contact_invite_service.dart';
-import '../services/wipe_service.dart';
-import 'pin_setup_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String username;
@@ -25,69 +20,93 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late final TextEditingController _controller;
-  final ImagePicker _picker = ImagePicker();
-  Uint8List? _avatar;
-  String? _error;
-  bool _saving = false;
+  static const avatarKey = 'avatar';
+
+  final _picker = ImagePicker();
+  final _nameCtrl = TextEditingController();
+
+  Uint8List? avatarBytes;
+  bool saving = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.username);
-    _avatar = widget.avatarBytes;
+    _nameCtrl.text = widget.username;
+    avatarBytes = widget.avatarBytes;
+    _loadAvatar();
   }
 
-  Future<void> _pickAvatar() async {
-    final img = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 512);
-    if (img != null) {
-      final bytes = await img.readAsBytes();
-      setState(() => _avatar = bytes);
+  Future<void> _loadAvatar() async {
+    final prefs = await SharedPreferences.getInstance();
+    var b64 = prefs.getString(avatarKey);
+    if (b64 == null || b64.isEmpty) return;
+
+    if (b64.contains(',')) {
+      b64 = b64.split(',').last;
     }
+    try {
+      final bytes = base64Decode(b64);
+      if (mounted) setState(() => avatarBytes = bytes);
+    } catch (_) {}
+  }
+
+  Future<void> _changeAvatar() async {
+    final img = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (img == null) return;
+
+    final bytes = await img.readAsBytes();
+    setState(() => avatarBytes = bytes);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(avatarKey, base64Encode(bytes));
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Аватар обновлён')),
+    );
   }
 
   Future<void> _save() async {
-    final username = _controller.text.trim().toLowerCase();
-    if (username.length < 3 || !RegExp(r'^[a-z0-9]+$').hasMatch(username)) {
-      setState(() => _error = 'Некорректный username');
+    final name = _nameCtrl.text.trim().toLowerCase();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите username')),
+      );
       return;
     }
 
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
+    setState(() => saving = true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('username', name);
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('username', username);
-      if (_avatar != null) {
-        await prefs.setString('avatar', base64Encode(_avatar!));
-      }
-
-      // обновляем ник в каталоге глобального поиска
-      await ContactInviteService().registerUsername(username);
-
-      if (!mounted) return;
-      Navigator.pop(context);
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _error = 'Ошибка сохранения';
-          _saving = false;
-        });
-      }
+    if (avatarBytes != null) {
+      await prefs.setString(avatarKey, base64Encode(avatarBytes!));
     }
+
+    if (!mounted) return;
+    setState(() => saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Сохранено')),
+    );
+    Navigator.pop(context);
   }
 
-  Future<void> _wipeAll() async {
-    final first = await showDialog<bool>(
+  Future<void> _deleteEverything() async {
+    final pinOk = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Удалить всё?', style: TextStyle(color: Colors.redAccent)),
+        title: const Text(
+          'Удалить всё полностью?',
+          style: TextStyle(color: Colors.white),
+        ),
         content: const Text(
-          'Будут стёрты аккаунт, PIN, контакты и локальные данные.\nЭто необратимо.',
+          'Будут стёрты локальные данные приложения. Это нельзя отменить.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -97,74 +116,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Далее', style: TextStyle(color: Colors.redAccent)),
+            child: const Text(
+              'Удалить',
+              style: TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
     );
-    if (first != true || !mounted) return;
+    if (pinOk != true) return;
 
-    final pinCtrl = TextEditingController();
-    final pinOk = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Введите PIN', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: pinCtrl,
-          obscureText: true,
-          keyboardType: TextInputType.number,
-          maxLength: 4,
-          style: const TextStyle(color: Colors.white, letterSpacing: 12, fontSize: 22),
-          textAlign: TextAlign.center,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(
-            counterText: '',
-            hintText: '••••',
-            hintStyle: TextStyle(color: Colors.white24),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Удалить', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
-    );
-    if (pinOk != true || !mounted) return;
-
-    final result = await WipeService().wipeEverything(pin: pinCtrl.text.trim());
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
 
     if (!mounted) return;
-
-    if (!result.success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message)),
-      );
-      return;
-    }
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const PinSetupScreen()),
-      (_) => false,
-    );
-
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        duration: const Duration(seconds: 5),
-      ),
+      const SnackBar(content: Text('Локальные данные удалены')),
     );
+    // при необходимости: выход на welcome / splash
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _nameCtrl.dispose();
     super.dispose();
   }
 
@@ -174,95 +149,120 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        elevation: 0,
         title: const Text('Профиль', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            GestureDetector(
-              onTap: _pickAvatar,
-              child: CircleAvatar(
-                radius: 55,
-                backgroundColor: Colors.white12,
-                backgroundImage: _avatar != null ? MemoryImage(_avatar!) : null,
-                child: _avatar == null
-                    ? const Icon(Icons.add_a_photo, color: Colors.white54, size: 32)
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Сменить аватар',
-              style: TextStyle(color: Colors.white38, fontSize: 13),
-            ),
-            const SizedBox(height: 40),
-            TextField(
-              controller: _controller,
-              style: const TextStyle(color: Colors.white, fontSize: 18),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+        children: [
+          const SizedBox(height: 12),
+          // круглый аватар как раньше
+          Center(
+            child: Column(
+              children: [
+                GestureDetector(
+                  onTap: _changeAvatar,
+                  child: CircleAvatar(
+                    radius: 48,
+                    backgroundColor: const Color(0xFF2A2A2A),
+                    backgroundImage: avatarBytes != null
+                        ? MemoryImage(avatarBytes!)
+                        : null,
+                    child: avatarBytes == null
+                        ? const Icon(
+                            Icons.add_a_photo_outlined,
+                            color: Colors.white38,
+                            size: 28,
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: _changeAvatar,
+                  child: const Text(
+                    'Сменить аватар',
+                    style: TextStyle(color: Colors.white38, fontSize: 13),
+                  ),
+                ),
               ],
-              decoration: InputDecoration(
-                labelText: 'Username',
-                labelStyle: const TextStyle(color: Colors.white54),
-                errorText: _error,
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white),
-                ),
+            ),
+          ),
+          const SizedBox(height: 36),
+          const Text(
+            'Username',
+            style: TextStyle(color: Colors.white38, fontSize: 12),
+          ),
+          TextField(
+            controller: _nameCtrl,
+            style: const TextStyle(color: Colors.white, fontSize: 18),
+            cursorColor: Colors.white,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white54),
               ),
             ),
-            const SizedBox(height: 40),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+          ),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
                 ),
-                onPressed: _saving ? null : _save,
-                child: _saving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Сохранить', style: TextStyle(fontSize: 16)),
+                elevation: 0,
+              ),
+              onPressed: saving ? null : _save,
+              child: saving
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text(
+                      'Сохранить',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.redAccent,
+                side: const BorderSide(color: Colors.redAccent),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
+                ),
+              ),
+              onPressed: _deleteEverything,
+              child: const Text(
+                'Удалить всё полностью',
+                style: TextStyle(fontSize: 15),
               ),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.redAccent,
-                  side: const BorderSide(color: Colors.redAccent),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                onPressed: _wipeAll,
-                child: const Text('Удалить всё полностью', style: TextStyle(fontSize: 15)),
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Стирает локальные данные. Удаление иконки приложения — через настройки системы.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white30, fontSize: 11),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Стирает локальные данные. Удаление иконки приложения — через настройки системы.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white24, fontSize: 11, height: 1.3),
+          ),
+        ],
       ),
     );
   }
