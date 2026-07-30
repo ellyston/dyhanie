@@ -1,21 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import '../services/chat_wipe_service.dart';
-import '../services/chat_history_service.dart';
-import '../widgets/chat_input_bar.dart';
-import '../widgets/chat_app_bar.dart';
 
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../widgets/chat_message_list.dart';
 
+import '../services/chat_history_service.dart';
+import '../services/chat_wipe_service.dart';
 import '../services/dialog_signal_service.dart';
+import '../services/locale_service.dart';
 import '../services/p2p_service.dart';
+import '../widgets/chat_app_bar.dart';
+import '../widgets/chat_input_bar.dart';
+import '../widgets/chat_message_list.dart';
 import 'call_screen.dart';
+import 'emoji_picker_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomCode;
@@ -59,13 +61,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   P2PService? _p2p;
   bool p2pConnected = false;
-  String p2pStatusText = 'нет';
+  String p2pStatusText = '';
   bool blockServerMessages = false;
-  String connectionMode = 'нет связи';
+  String connectionMode = '';
 
   int selectedTime = 30;
   double messageFontSize = 16;
   Uint8List? backgroundBytes;
+  Uint8List? myAvatarBytes;
+  Uint8List? otherAvatarBytes;
   String? typingUser;
   bool isSavedChat = false;
   bool saveRequestIncoming = false;
@@ -107,6 +111,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return otherUser;
   }
 
+  Future<void> _loadAvatars() async {
+    final prefs = await SharedPreferences.getInstance();
+    Uint8List? mine;
+    final myRaw = prefs.getString('avatar');
+    if (myRaw != null && myRaw.isNotEmpty) {
+      try {
+        mine = base64Decode(myRaw);
+      } catch (_) {}
+    }
+
+    Uint8List? otherBytes;
+    final other = otherUser ?? _otherFromRoomCode();
+    if (other != null) {
+      final raw = prefs.getString('avatar_$other');
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          otherBytes = base64Decode(raw);
+        } catch (_) {}
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      myAvatarBytes = mine;
+      otherAvatarBytes = otherBytes;
+    });
+  }
+
   Future<void> _clearMyIncomingSignal() async {
     if (!_looksLikeDirectDialog(widget.roomCode)) return;
     final other = _otherFromRoomCode();
@@ -118,7 +150,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
     } catch (_) {}
   }
-    
+
   Future<void> _loadSavedHistory() async {
     try {
       final saved = await _history.load(widget.roomCode);
@@ -126,7 +158,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (saved.isEmpty) return;
 
       setState(() {
-        // не затираем, если уже что-то пришло с сервера — дополняем
         final existingKeys = messages.map((m) => m['key']?.toString()).toSet();
         for (final m in saved) {
           final key = m['key']?.toString();
@@ -156,11 +187,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-
   @override
   void initState() {
     super.initState();
+    p2pStatusText = L.t('none');
+    connectionMode = L.t('no_connection');
     WidgetsBinding.instance.addObserver(this);
+    _loadAvatars();
     _setOnline(true);
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted) _setOnline(true);
@@ -192,10 +225,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _updateConnectionMode() {
     final mode = p2pConnected
-        ? 'P2P'
+        ? L.t('p2p_connected')
         : (otherUser != null
-            ? (blockServerMessages ? 'только P2P (ждём)' : 'сервер')
-            : 'нет связи');
+            ? (blockServerMessages ? L.t('p2p_only_wait') : L.t('via_server'))
+            : L.t('no_connection'));
     if (mounted) setState(() => connectionMode = mode);
   }
 
@@ -244,6 +277,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         otherOnline = online;
       });
       _updateConnectionMode();
+      _loadAvatars();
 
       if (other != null) {
         final name = other!;
@@ -330,7 +364,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       await _p2p!.connect();
     } catch (e) {
-      if (mounted) setState(() => p2pStatusText = 'ошибка: $e');
+      if (mounted) setState(() => p2pStatusText = '${L.t('error')}: $e');
     }
   }
 
@@ -419,8 +453,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _listenRead() {
-    _readSub =
-        _db.child('rooms').child(widget.roomCode).child('read').onValue.listen((event) {
+    _readSub = _db
+        .child('rooms')
+        .child(widget.roomCode)
+        .child('read')
+        .onValue
+        .listen((event) {
       if (event.snapshot.value == null) return;
       final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
       data.forEach((k, v) {
@@ -443,8 +481,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _listenCalls() {
-    _callSub =
-        _db.child('rooms').child(widget.roomCode).child('call').onValue.listen((event) {
+    _callSub = _db
+        .child('rooms')
+        .child(widget.roomCode)
+        .child('call')
+        .onValue
+        .listen((event) {
       if (event.snapshot.value == null) {
         setState(() {
           callInProgress = false;
@@ -461,13 +503,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         callInProgress = status == 'ringing' || status == 'accepted';
         if (status == 'ringing') {
-          callStatusBanner =
-              from == widget.username ? 'Вызов...' : 'Входящий звонок';
+          callStatusBanner = from == widget.username
+              ? L.t('calling')
+              : L.t('incoming_call');
         }
-        if (status == 'accepted') callStatusBanner = 'Идёт звонок';
-        if (status == 'rejected') callStatusBanner = 'Сброшен';
-        if (status == 'ended') callStatusBanner = 'Звонок завершён';
-        if (status == 'no_answer') callStatusBanner = 'Не ответил';
+        if (status == 'accepted') callStatusBanner = L.t('call_in_progress');
+        if (status == 'rejected') callStatusBanner = L.t('call_rejected');
+        if (status == 'ended') callStatusBanner = L.t('call_ended');
+        if (status == 'no_answer') callStatusBanner = L.t('no_answer');
       });
 
       if (status == 'ringing' &&
@@ -495,7 +538,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Входящий звонок', style: TextStyle(color: Colors.white)),
+        title: Text(
+          L.t('incoming_call'),
+          style: const TextStyle(color: Colors.white),
+        ),
         content: Text('@$from', style: const TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
@@ -508,7 +554,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               _incomingDialogShown = false;
               Navigator.pop(ctx);
             },
-            child: const Text('Отклонить', style: TextStyle(color: Colors.redAccent)),
+            child: Text(
+              L.t('decline_call'),
+              style: const TextStyle(color: Colors.redAccent),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -531,7 +580,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
               );
             },
-            child: const Text('Принять', style: TextStyle(color: Colors.greenAccent)),
+            child: Text(
+              L.t('accept_call'),
+              style: const TextStyle(color: Colors.greenAccent),
+            ),
           ),
         ],
       ),
@@ -577,8 +629,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _listenSave() {
-    _saveSub =
-        _db.child('rooms').child(widget.roomCode).child('meta').onValue.listen((event) {
+    _saveSub = _db
+        .child('rooms')
+        .child(widget.roomCode)
+        .child('meta')
+        .onValue
+        .listen((event) {
       if (event.snapshot.value == null) return;
       final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
       final saved = data['saved'] == true;
@@ -664,7 +720,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final canServer = !blockServerMessages;
     if (!canP2P && !canServer) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Нет P2P, сервер заблокирован')),
+        SnackBar(content: Text(L.t('no_p2p_server_blocked'))),
       );
       return;
     }
@@ -748,11 +804,28 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final bytes = await img.readAsBytes();
     if (bytes.length > 600000) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Файл слишком большой')),
+        SnackBar(content: Text(L.t('file_too_big'))),
       );
       return;
     }
     await _send(imageB64: base64Encode(bytes));
+  }
+
+  Future<void> _openEmoji() async {
+    final emoji = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const EmojiPickerScreen()),
+    );
+    if (emoji == null || !mounted) return;
+    final text = _controller.text;
+    final sel = _controller.selection;
+    final start = sel.isValid ? sel.start : text.length;
+    final end = sel.isValid ? sel.end : text.length;
+    final next = text.replaceRange(start, end, emoji);
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
   }
 
   void _pinMessage(Map<String, dynamic> msg) {
@@ -773,7 +846,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             ListTile(
               leading: const Icon(Icons.reply, color: Colors.white70),
-              title: const Text('Ответить', style: TextStyle(color: Colors.white)),
+              title: Text(L.t('reply'), style: const TextStyle(color: Colors.white)),
               onTap: () {
                 setState(() => replyTo = msg);
                 Navigator.pop(ctx);
@@ -781,7 +854,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
             ListTile(
               leading: const Icon(Icons.push_pin, color: Colors.white70),
-              title: const Text('Закрепить', style: TextStyle(color: Colors.white)),
+              title: Text(
+                L.t('pin_message'),
+                style: const TextStyle(color: Colors.white),
+              ),
               onTap: () {
                 _pinMessage(msg);
                 Navigator.pop(ctx);
@@ -789,22 +865,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
             ListTile(
               leading: const Icon(Icons.copy, color: Colors.white70),
-              title: const Text('Копировать', style: TextStyle(color: Colors.white)),
+              title: Text(L.t('copy'), style: const TextStyle(color: Colors.white)),
               onTap: () {
                 Clipboard.setData(
                   ClipboardData(text: msg['text']?.toString() ?? ''),
                 );
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Скопировано')),
+                  SnackBar(content: Text(L.t('copied'))),
                 );
               },
             ),
             if (msg['username'] == widget.username)
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.redAccent),
-                title:
-                    const Text('Удалить у всех', style: TextStyle(color: Colors.redAccent)),
+                title: Text(
+                  L.t('delete_for_all'),
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
                 onTap: () {
                   _deleteForBoth(msg['key'] as String);
                   Navigator.pop(ctx);
@@ -816,55 +894,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  String _fmtTime(int ts) {
-    final d = DateTime.fromMillisecondsSinceEpoch(ts);
-    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  }
-
-  Widget _statusIcon(Map msg) {
-    if (msg['username'] != widget.username) return const SizedBox.shrink();
-    final ts = msg['timestamp'] as int? ?? 0;
-    final read = otherLastRead != null && otherLastRead! >= ts;
-    return Icon(
-      read ? Icons.done_all : Icons.done,
-      size: 14,
-      color: read ? Colors.lightBlueAccent : Colors.white38,
-    );
-  }
-
+  /// Выход без подтверждающего диалога
   Future<void> _exitRoom() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Выйти?', style: TextStyle(color: Colors.white)),
-        content: Text(
-          wipeOnExit
-              ? 'Диалог будет полностью очищен (сервер и P2P).'
-              : 'Диалог сохранится.',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Выйти', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-
     await _wipe.leavePresence(
       roomCode: widget.roomCode,
       username: widget.username,
     );
 
     if (wipeOnExit) {
-      // 🔴 красный — стереть историю и сервер/P2P
       await _history.clear(widget.roomCode);
       await _wipe.wipeEverywhere(
         roomCode: widget.roomCode,
@@ -877,11 +914,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         p2pConnected: p2pConnected,
       );
     } else {
-      // 🟢 зелёный — сохранить сообщения на устройство
       await _history.save(widget.roomCode, messages);
     }
 
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 200));
 
     final empty = await _wipe.isRoomEmpty(widget.roomCode);
     if (wipeOnExit && empty) {
@@ -941,8 +977,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           runSpacing: 10,
           children: timeOptions.map((sec) {
             final label = sec == 0
-                ? 'Не исчезать'
-                : (sec < 60 ? '$sec сек' : '${sec ~/ 60} мин');
+                ? L.t('ttl_none')
+                : (sec < 60
+                    ? '$sec ${L.t('sec_short')}'
+                    : '${sec ~/ 60} ${L.t('min_short')}');
             return ChoiceChip(
               label: Text(label),
               selected: selectedTime == sec,
@@ -968,7 +1006,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Настройки', style: TextStyle(color: Colors.white, fontSize: 18)),
+                Text(
+                  L.t('settings'),
+                  style: const TextStyle(color: Colors.white, fontSize: 18),
+                ),
                 Slider(
                   value: messageFontSize,
                   min: 12,
@@ -981,9 +1022,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   },
                 ),
                 SwitchListTile(
-                  title: const Text(
-                    'Блокировать сервер',
-                    style: TextStyle(color: Colors.white70),
+                  title: Text(
+                    L.t('block_server'),
+                    style: const TextStyle(color: Colors.white70),
                   ),
                   value: blockServerMessages,
                   onChanged: (v) {
@@ -1005,18 +1046,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     }
                   },
                   icon: const Icon(Icons.image, color: Colors.white70),
-                  label: const Text('Фон', style: TextStyle(color: Colors.white70)),
+                  label: Text(
+                    L.t('background'),
+                    style: const TextStyle(color: Colors.white70),
+                  ),
                 ),
                 if (!isSavedChat)
                   ElevatedButton(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      _db.child('rooms').child(widget.roomCode).child('meta').update({
+                      _db
+                          .child('rooms')
+                          .child(widget.roomCode)
+                          .child('meta')
+                          .update({
                         'saveRequestedBy': widget.username,
                         'saved': false,
                       });
                     },
-                    child: const Text('Предложить сохранить чат'),
+                    child: Text(L.t('suggest_save')),
                   ),
               ],
             ),
@@ -1082,45 +1130,46 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: ChatAppBar(
-           showSearch: showSearch,
-           searchController: _searchCtrl,
-           isDirect: _looksLikeDirectDialog(widget.roomCode),
-           roomCode: widget.roomCode,
-           otherUser: otherUser,
-           otherOnline: otherOnline,
-           connectionMode: connectionMode,
-           blockServerMessages: blockServerMessages,
-           wipeOnExit: wipeOnExit,
-           onBack: _exitRoom,
-           onToggleSearch: () => setState(() {
-             showSearch = !showSearch;
-             if (!showSearch) {
-               searchQuery = '';
-               _searchCtrl.clear();
-             }
-           }),
-           onSearchChanged: (v) => setState(() => searchQuery = v.trim()),
-           onToggleServerBlock: () {
-             setState(() => blockServerMessages = !blockServerMessages);
-             _updateConnectionMode();
-           },
-           onCall: _startCall,
-           onTimer: _openTime,
-           onToggleWipe: () {
-             setState(() => wipeOnExit = !wipeOnExit);
-             ScaffoldMessenger.of(context).showSnackBar(
-               SnackBar(
-                 content: Text(
-                   wipeOnExit
-                      ? 'При выходе диалог будет полностью очищен'
-                       : 'При выходе диалог сохранится',
+            showSearch: showSearch,
+            searchController: _searchCtrl,
+            isDirect: _looksLikeDirectDialog(widget.roomCode),
+            roomCode: widget.roomCode,
+            otherUser: otherUser,
+            otherOnline: otherOnline,
+            connectionMode: connectionMode,
+            blockServerMessages: blockServerMessages,
+            wipeOnExit: wipeOnExit,
+            myUsername: widget.username,
+            myAvatarBytes: myAvatarBytes,
+            otherAvatarBytes: otherAvatarBytes,
+            onBack: _exitRoom,
+            onToggleSearch: () => setState(() {
+              showSearch = !showSearch;
+              if (!showSearch) {
+                searchQuery = '';
+                _searchCtrl.clear();
+              }
+            }),
+            onSearchChanged: (v) => setState(() => searchQuery = v.trim()),
+            onToggleServerBlock: () {
+              setState(() => blockServerMessages = !blockServerMessages);
+              _updateConnectionMode();
+            },
+            onCall: _startCall,
+            onTimer: _openTime,
+            onToggleWipe: () {
+              setState(() => wipeOnExit = !wipeOnExit);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    wipeOnExit ? L.t('wipe_on_exit') : L.t('keep_on_exit'),
                   ),
                   duration: const Duration(seconds: 2),
                 ),
               );
             },
             onSettings: _openSettings,
-          ),   
+          ),
           body: Column(
             children: [
               if (callStatusBanner.isNotEmpty)
@@ -1151,13 +1200,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           '${pinned!['username']}: ${pinned!['text']}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              const TextStyle(color: Colors.white70, fontSize: 13),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                       IconButton(
-                        icon:
-                            const Icon(Icons.close, size: 16, color: Colors.white38),
+                        icon: const Icon(
+                          Icons.close,
+                          size: 16,
+                          color: Colors.white38,
+                        ),
                         onPressed: () => _db
                             .child('rooms')
                             .child(widget.roomCode)
@@ -1176,7 +1230,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     children: [
                       Expanded(
                         child: Text(
-                          '@$saveRequestedBy предлагает сохранить чат',
+                          L.tParams(
+                            'save_chat_offer',
+                            {'name': '$saveRequestedBy'},
+                          ),
                           style: const TextStyle(color: Colors.white),
                         ),
                       ),
@@ -1186,8 +1243,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             .child(widget.roomCode)
                             .child('meta')
                             .update({'saveRequestedBy': null}),
-                        child:
-                            const Text('Нет', style: TextStyle(color: Colors.white54)),
+                        child: Text(
+                          L.t('no'),
+                          style: const TextStyle(color: Colors.white54),
+                        ),
                       ),
                       TextButton(
                         onPressed: () {
@@ -1205,26 +1264,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           _timers.clear();
                           setState(() => isSavedChat = true);
                         },
-                        child: const Text(
-                          'Да',
-                          style: TextStyle(color: Colors.greenAccent),
+                        child: Text(
+                          L.t('yes'),
+                          style: const TextStyle(color: Colors.greenAccent),
                         ),
                       ),
                     ],
-                  ),
-                ),
-              if (!p2pConnected)
-                Container(
-                  width: double.infinity,
-                  color: Colors.white10,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-                  child: Text(
-                    otherUser == null
-                        ? 'Ожидание собеседника...'
-                        : 'P2P: $p2pStatusText | $connectionMode',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ),
               Expanded(
@@ -1241,25 +1286,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   onSwipeDelete: _deleteForBoth,
                 ),
               ),
-
               if (typingUser != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 16, bottom: 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      '@$typingUser печатает...',
+                      '@$typingUser ${L.t('typing')}',
                       style: const TextStyle(color: Colors.white38, fontSize: 13),
                     ),
                   ),
                 ),
-              
               ChatInputBar(
                 controller: _controller,
                 p2pConnected: p2pConnected,
                 blockServerMessages: blockServerMessages,
                 replyTo: replyTo,
                 onAttach: _attach,
+                onEmoji: _openEmoji,
                 onSend: () => _send(),
                 onClearReply: () => setState(() => replyTo = null),
               ),

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../services/locale_service.dart';
+
 class ChatInputBar extends StatelessWidget {
   final TextEditingController controller;
   final bool p2pConnected;
   final bool blockServerMessages;
   final Map<String, dynamic>? replyTo;
   final VoidCallback onAttach;
+  final VoidCallback onEmoji;
   final VoidCallback onSend;
   final VoidCallback onClearReply;
 
@@ -16,6 +19,7 @@ class ChatInputBar extends StatelessWidget {
     required this.blockServerMessages,
     required this.replyTo,
     required this.onAttach,
+    required this.onEmoji,
     required this.onSend,
     required this.onClearReply,
   });
@@ -42,20 +46,28 @@ class ChatInputBar extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, size: 16, color: Colors.white38),
+                  icon:
+                      const Icon(Icons.close, size: 16, color: Colors.white38),
                   onPressed: onClearReply,
                 ),
               ],
             ),
           ),
         Container(
-          padding: const EdgeInsets.fromLTRB(8, 10, 8, 20),
+          padding: const EdgeInsets.fromLTRB(4, 10, 8, 20),
           color: Colors.black54,
           child: Row(
             children: [
               IconButton(
                 onPressed: onAttach,
                 icon: const Icon(Icons.attach_file, color: Colors.white70),
+              ),
+              IconButton(
+                onPressed: onEmoji,
+                icon: const Icon(
+                  Icons.emoji_emotions_outlined,
+                  color: Colors.white70,
+                ),
               ),
               Expanded(
                 child: TextField(
@@ -65,8 +77,8 @@ class ChatInputBar extends StatelessWidget {
                     hintText: p2pConnected
                         ? 'P2P...'
                         : (blockServerMessages
-                            ? 'Ждём P2P...'
-                            : 'Сообщение...'),
+                            ? L.t('waiting_p2p')
+                            : L.t('message_hint')),
                     hintStyle: const TextStyle(color: Colors.white30),
                     border: InputBorder.none,
                   ),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/dialog_signal_service.dart';
+import '../services/locale_service.dart';
 import '../services/outbox_service.dart';
 import 'chat_screen.dart';
 
@@ -88,6 +89,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       final other = _otherFromDialogId(id, widget.myUsername);
       if (other == null) continue;
       final count = await _outbox.countTo(widget.myUsername, other);
+      if (!mounted) return;
       setState(() {
         final prev = items[id];
         items[id] = _ChatItem(
@@ -148,15 +150,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('Чаты', style: TextStyle(color: Colors.white)),
+        title: Text(L.t('chats'), style: const TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: list.isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
-                'Пока нет диалогов.\nНапишите из Контактов.',
+                L.t('chats_empty'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38),
+                style: const TextStyle(color: Colors.white38),
               ),
             )
           : ListView.separated(
@@ -238,9 +240,11 @@ class _ChatItem {
   int get badge => comeOnline ? 1 : incomingCount;
 
   String get subtitle {
-    if (comeOnline) return 'Ждут вас в чате';
-    if (incomingCount > 0) return 'Есть входящие: $incomingCount';
-    if (hasOutbox) return 'Исходящие ждут открытия';
-    return 'Диалог';
+    if (comeOnline) return L.t('waiting_in_chat');
+    if (incomingCount > 0) {
+      return L.tParams('incoming_count', {'n': '$incomingCount'});
+    }
+    if (hasOutbox) return L.t('outbox_waiting');
+    return L.t('dialog');
   }
 }

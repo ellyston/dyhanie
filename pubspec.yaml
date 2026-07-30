@@ -22,6 +22,7 @@ dependencies:
   http: ^1.2.2
   flutter_webrtc: ^0.12.1+hotfix.1
   mobile_scanner: ^5.2.3
+  characters: ^1.3.0
 
 dev_dependencies:
   flutter_test:

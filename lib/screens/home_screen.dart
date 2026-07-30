@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/locale_service.dart';
 import 'chat_screen.dart';
 import 'chats_screen.dart';
 import 'contacts_screen.dart';
@@ -54,19 +55,19 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Очистить кэш?', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Удалятся временные сообщения и локальные черновики. Аккаунт останется.',
-          style: TextStyle(color: Colors.white70),
+        title: Text(L.t('clear_cache_title'), style: const TextStyle(color: Colors.white)),
+        content: Text(
+          L.t('clear_cache_body'),
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+            child: Text(L.t('cancel'), style: const TextStyle(color: Colors.white54)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Очистить', style: TextStyle(color: Colors.redAccent)),
+            child: Text(L.t('clear'), style: const TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -80,7 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Кэш очищен')),
+      SnackBar(content: Text(L.t('cache_cleared'))),
     );
   }
 
@@ -119,8 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 right: -4,
                 top: -4,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   decoration: BoxDecoration(
                     color: Colors.redAccent,
                     borderRadius: BorderRadius.circular(10),
@@ -139,15 +139,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openChats() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatsScreen(myUsername: username),
-      ),
-    );
-  }
-
   void _openProfile() async {
     await Navigator.push(
       context,
@@ -155,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => ProfileScreen(username: username),
       ),
     );
-    await _loadProfile(); // обязательно
+    await _loadProfile();
     if (mounted) setState(() {});
   }
 
@@ -167,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.black,
         elevation: 0,
         leading: IconButton(
-          tooltip: 'Настройки',
+          tooltip: L.t('settings'),
           icon: const Icon(Icons.settings_outlined, color: Colors.white70),
           onPressed: () {
             Navigator.push(
@@ -178,25 +169,22 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Автоблокировка',
+            tooltip: L.t('auto_lock'),
             icon: const Icon(Icons.timer_outlined, color: Colors.white70),
             onPressed: () {
               Navigator.push(
-               context,
-               MaterialPageRoute(builder: (_) => const AutoLockSettingsScreen()),
+                context,
+                MaterialPageRoute(builder: (_) => const AutoLockSettingsScreen()),
               );
             },
           ),
           IconButton(
-            tooltip: 'Очистить кэш',
-            icon: const Icon(
-              Icons.cleaning_services_outlined,
-              color: Colors.white70,
-            ),
+            tooltip: L.t('clear_cache'),
+            icon: const Icon(Icons.cleaning_services_outlined, color: Colors.white70),
             onPressed: _clearCache,
           ),
           IconButton(
-            tooltip: 'VPN',
+            tooltip: L.t('vpn'),
             icon: const Icon(Icons.shield_outlined, color: Colors.white70),
             onPressed: () {
               Navigator.push(
@@ -225,49 +213,44 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 288,
                             child: avatarBytes != null && avatarBytes!.isNotEmpty
                                 ? Image.memory(
-                                   avatarBytes!,
-                                   fit: BoxFit.cover,
-                                   width: 192,
-                                   height: 288,
-                                   gaplessPlayback: true,
-                                   errorBuilder: (_, __, ___) => Container(
-                                     color: Colors.white12,
-                                     alignment: Alignment.center,
-                                     child: const Icon(Icons.broken_image, color: Colors.white38),
+                                    avatarBytes!,
+                                    fit: BoxFit.cover,
+                                    width: 192,
+                                    height: 288,
+                                    gaplessPlayback: true,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      color: Colors.white12,
+                                      alignment: Alignment.center,
+                                      child: const Icon(Icons.broken_image, color: Colors.white38),
                                     ),
                                   )
                                 : Container(
-                                      color: Colors.white12,
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        username.isNotEmpty ? username[0].toUpperCase() : '?',
-                                        style: const TextStyle(color: Colors.white, fontSize: 64),
-                                      ),
+                                    color: Colors.white12,
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      username.isNotEmpty ? username[0].toUpperCase() : '?',
+                                      style: const TextStyle(color: Colors.white, fontSize: 64),
                                     ),
+                                  ),
                           ),
                         ),
-
-
                         const SizedBox(height: 14),
                         Text(
                           '@$username',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 18,
-                          ),
+                          style: const TextStyle(color: Colors.white70, fontSize: 18),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          'Профиль',
-                          style: TextStyle(color: Colors.white30, fontSize: 12),
+                        Text(
+                          L.t('profile'),
+                          style: const TextStyle(color: Colors.white30, fontSize: 12),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 28),
-                  const Text(
-                    'Дыхание',
-                    style: TextStyle(
+                  Text(
+                    L.t('app_name'),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 36,
                       fontWeight: FontWeight.w300,
@@ -289,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         _roundAction(
                           icon: Icons.add,
-                          tooltip: 'Создать комнату',
+                          tooltip: L.t('create_room'),
                           onTap: () {
                             final code = _generateRoomCode();
                             Navigator.push(
@@ -306,13 +289,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 28),
                         _roundAction(
                           icon: Icons.login,
-                          tooltip: 'Войти по коду',
+                          tooltip: L.t('join_by_code'),
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    JoinRoomScreen(username: username),
+                                builder: (_) => JoinRoomScreen(username: username),
                               ),
                             );
                           },
@@ -326,13 +308,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         _roundAction(
                           icon: Icons.chat_bubble_outline,
-                          tooltip: 'Сохранённые чаты',
+                          tooltip: L.t('saved_chats'),
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    ChatsScreen(myUsername: username),
+                                builder: (_) => ChatsScreen(myUsername: username),
                               ),
                             );
                           },
@@ -340,14 +321,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 28),
                         _roundAction(
                           icon: Icons.contacts_outlined,
-                          tooltip: 'Контакты',
+                          tooltip: L.t('contacts'),
                           badge: contactsBadge,
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    ContactsScreen(myUsername: username),
+                                builder: (_) => ContactsScreen(myUsername: username),
                               ),
                             );
                           },
