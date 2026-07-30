@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/locale_service.dart';
 import 'pin_setup_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -15,8 +16,6 @@ class WelcomeScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(flex: 2),
-
-              // Логотип — позже заменим на твою картинку
               Container(
                 width: 160,
                 height: 160,
@@ -24,10 +23,10 @@ class WelcomeScreen extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.06),
                   shape: BoxShape.circle,
                 ),
-                child: const Center(
+                child: Center(
                   child: Text(
-                    'Д',
-                    style: TextStyle(
+                    L.t('app_name').isNotEmpty ? L.t('app_name')[0] : 'D',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 72,
                       fontWeight: FontWeight.w200,
@@ -36,9 +35,9 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Дыхание',
-                style: TextStyle(
+              Text(
+                L.t('app_name'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 36,
                   fontWeight: FontWeight.w300,
@@ -46,13 +45,11 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Эфемерные разговоры',
-                style: TextStyle(color: Colors.white38, fontSize: 14),
+              Text(
+                L.t('ephemeral_talks'),
+                style: const TextStyle(color: Colors.white38, fontSize: 14),
               ),
-
               const Spacer(flex: 3),
-
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -68,12 +65,14 @@ class WelcomeScreen extends StatelessWidget {
                   onPressed: () {
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (_) => const PinSetupScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const PinSetupScreen(),
+                      ),
                     );
                   },
-                  child: const Text(
-                    'ГОВОРИ ПОКА ДЫШИШЬ',
-                    style: TextStyle(
+                  child: Text(
+                    L.t('tagline_button'),
+                    style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1.2,

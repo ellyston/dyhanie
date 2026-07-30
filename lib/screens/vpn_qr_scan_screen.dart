@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../services/locale_service.dart';
+
 class VpnQrScanScreen extends StatefulWidget {
   const VpnQrScanScreen({super.key});
 
@@ -37,7 +39,7 @@ class _VpnQrScanScreenState extends State<VpnQrScanScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('Скан QR', style: TextStyle(color: Colors.white)),
+        title: Text(L.t('vpn_qr_title'), style: const TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Stack(
@@ -52,10 +54,10 @@ class _VpnQrScanScreenState extends State<VpnQrScanScreen> {
               width: double.infinity,
               color: Colors.black54,
               padding: const EdgeInsets.all(16),
-              child: const Text(
-                'Наведите камеру на QR с vless://, hy2:// или URL подписки',
+              child: Text(
+                L.t('vpn_qr_hint'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
             ),
           ),

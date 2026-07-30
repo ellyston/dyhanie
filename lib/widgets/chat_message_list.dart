@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../services/locale_service.dart';
+
 class ChatMessageList extends StatelessWidget {
   final List<Map<String, dynamic>> messages;
   final String myUsername;
@@ -47,8 +49,8 @@ class ChatMessageList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (messages.isEmpty) {
-      return const Center(
-        child: Text('Пока тихо', style: TextStyle(color: Colors.white38)),
+      return Center(
+        child: Text(L.t('quiet_chat'), style: TextStyle(color: Colors.white38)),
       );
     }
 
@@ -141,7 +143,7 @@ class ChatMessageList extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        isP2P ? 'P2P' : 'сервер',
+                        isP2P ? L.t('p2p_connected') : L.t('via_server'),
                         style: TextStyle(
                           color: isP2P
                               ? Colors.greenAccent.withValues(alpha: 0.8)

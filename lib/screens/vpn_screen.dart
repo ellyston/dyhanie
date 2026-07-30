@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/vpn_models.dart';
+import '../services/locale_service.dart';
 import '../services/vpn/vpn_engine.dart';
 import '../services/vpn/vpn_engine_factory.dart';
 import '../services/vpn/vpn_log_service.dart';
@@ -54,7 +55,7 @@ class _VpnScreenState extends State<VpnScreen> {
       restoredSlotId = slotId;
       restoredServerId = serverId;
       if (slotId != null) {
-        _log.add('restore_ui', 'Восстановлен выбор сервера');
+        _log.add('restore_ui', 'restore server selection');
       }
 
       if (!mounted) return;
@@ -78,14 +79,14 @@ class _VpnScreenState extends State<VpnScreen> {
       await _storage.setActiveIds(null, null);
       restoredSlotId = null;
       restoredServerId = null;
-      _log.add('disconnect', 'Отключено');
+      _log.add('disconnect', 'disconnected');
       setState(() {});
       return;
     }
 
     if (slots.isEmpty || slots.every((s) => s.servers.isEmpty)) {
-      _snack('Нет конфигураций');
-      _log.add('no_configs', 'Нет конфигураций');
+      _snack(L.t('vpn_no_configs'));
+      _log.add('no_configs', 'no configs');
       return;
     }
 
@@ -107,7 +108,7 @@ class _VpnScreenState extends State<VpnScreen> {
       } catch (_) {}
     }
     if (server == null) {
-      _snack('Нет конфигураций');
+      _snack(L.t('vpn_no_configs'));
       return;
     }
 
@@ -119,7 +120,7 @@ class _VpnScreenState extends State<VpnScreen> {
     }
 
     if (!_engine.supportsTunnel) {
-      _log.add('connect_stub', 'Туннель недоступен на этой платформе');
+      _log.add('connect_stub', 'tunnel unavailable on this platform');
     }
 
     setState(() => busy = true);
@@ -129,18 +130,16 @@ class _VpnScreenState extends State<VpnScreen> {
       await _storage.setActiveIds(slot.id, server.id);
       restoredSlotId = slot.id;
       restoredServerId = server.id;
-      _log.add('connect_ok', 'Подключено');
+      _log.add('connect_ok', 'connected');
     } else if (_engine.state == VpnConnState.otherVpnActive) {
-      _snack('Другой VPN уже активен');
-      _log.add('other_vpn', 'Другой VPN уже активен');
+      _snack(L.t('vpn_other_active'));
+      _log.add('other_vpn', 'other vpn active');
     } else if (_engine.state == VpnConnState.allUnavailable) {
-      _snack(
-        'Не удалось подключиться. Возможно, подписка устарела или заблокирована. Попробуйте обновить её.',
-      );
-      _log.add('all_unavailable', 'Серверы недоступны');
+      _snack(L.t('vpn_all_down'));
+      _log.add('all_unavailable', 'servers unavailable');
     } else if (_engine.statusDetail.isNotEmpty) {
       _snack(_engine.statusDetail);
-      _log.add('connect_fail', 'Нет туннеля или ошибка');
+      _log.add('connect_fail', 'no tunnel or error');
     }
 
     if (mounted) setState(() => busy = false);
@@ -148,7 +147,7 @@ class _VpnScreenState extends State<VpnScreen> {
 
   Future<void> _pingAll() async {
     setState(() => busy = true);
-    _log.add('ping_all', 'Проверка пинга');
+    _log.add('ping_all', 'ping check');
     final updated = <VpnSlot>[];
     for (final slot in slots) {
       final servers = <VpnServer>[];
@@ -162,7 +161,7 @@ class _VpnScreenState extends State<VpnScreen> {
     setState(() => slots = updated);
     await _persist();
     if (mounted) setState(() => busy = false);
-    _snack('Пинг обновлён');
+    _snack(L.t('vpn_ping_updated'));
   }
 
   Future<void> _pingActive() async {
@@ -187,12 +186,12 @@ class _VpnScreenState extends State<VpnScreen> {
     final hasSubs =
         slots.any((s) => s.isSubscription && s.subscriptionUrl != null);
     if (!hasSubs) {
-      _snack('Нет подписок для обновления');
+      _snack(L.t('vpn_no_subs'));
       return;
     }
 
     setState(() => busy = true);
-    _log.add('refresh_all', 'Принудительное обновление');
+    _log.add('refresh_all', 'force refresh');
 
     var ok = 0;
     var fail = 0;
@@ -218,9 +217,12 @@ class _VpnScreenState extends State<VpnScreen> {
     if (mounted) setState(() => busy = false);
 
     if (fail == 0) {
-      _snack('Обновлено подписок: $ok');
+      _snack(L.tParams('vpn_refreshed_ok', {'n': '$ok'}));
     } else {
-      _snack('Обновлено: $ok, ошибок: $fail');
+      _snack(L.tParams('vpn_refreshed_partial', {
+        'ok': '$ok',
+        'fail': '$fail',
+      }));
     }
   }
 
@@ -251,14 +253,14 @@ class _VpnScreenState extends State<VpnScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Импорт',
-                style: TextStyle(color: Colors.white, fontSize: 18),
+              Text(
+                L.t('vpn_import'),
+                style: const TextStyle(color: Colors.white, fontSize: 18),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Share-ссылка, JSON или URL подписки',
-                style: TextStyle(color: Colors.white54, fontSize: 13),
+              Text(
+                L.t('vpn_import_hint'),
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -266,7 +268,7 @@ class _VpnScreenState extends State<VpnScreen> {
                 maxLines: 5,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'vless://… или https://…/sub',
+                  hintText: L.t('vpn_import_placeholder'),
                   hintStyle: const TextStyle(color: Colors.white30),
                   filled: true,
                   fillColor: Colors.white10,
@@ -284,7 +286,7 @@ class _VpnScreenState extends State<VpnScreen> {
                   Navigator.pop(ctx);
                   await _doImport(text);
                 },
-                child: const Text('Импортировать'),
+                child: Text(L.t('vpn_import_btn')),
               ),
             ],
           ),
@@ -295,12 +297,14 @@ class _VpnScreenState extends State<VpnScreen> {
 
   Future<void> _doImport(String text) async {
     if (slots.length >= VpnStorageService.maxSlots) {
-      _snack('Максимум ${VpnStorageService.maxSlots} слотов');
-      _log.add('import_limit', 'Лимит слотов');
+      _snack(L.tParams('vpn_slot_limit', {
+        'n': '${VpnStorageService.maxSlots}',
+      }));
+      _log.add('import_limit', 'slot limit');
       return;
     }
     if (text.trim().isEmpty) {
-      _snack('Пустой импорт');
+      _snack(L.t('vpn_import_empty'));
       return;
     }
 
@@ -316,8 +320,8 @@ class _VpnScreenState extends State<VpnScreen> {
 
       var servers = result.servers;
       if (servers.isEmpty) {
-        _snack('Не удалось разобрать конфиг');
-        _log.add('import_empty', 'Пустой результат');
+        _snack(L.t('vpn_parse_fail'));
+        _log.add('import_empty', 'empty result');
         setState(() => busy = false);
         return;
       }
@@ -333,10 +337,10 @@ class _VpnScreenState extends State<VpnScreen> {
 
       final name = result.suggestedSlotName ??
           (isUrl
-              ? 'Подписка ${slots.length + 1}'
+              ? L.tParams('vpn_subscription_n', {'n': '${slots.length + 1}'})
               : (servers.length == 1
                   ? servers.first.name
-                  : 'Конфиг ${slots.length + 1}'));
+                  : L.tParams('vpn_config_n', {'n': '${slots.length + 1}'})));
 
       final slot = VpnSlot(
         id: 'slot_${DateTime.now().millisecondsSinceEpoch}',
@@ -350,11 +354,11 @@ class _VpnScreenState extends State<VpnScreen> {
 
       setState(() => slots = [...slots, slot]);
       await _persist();
-      _log.add('import_ok', 'Слот добавлен: ${servers.length} серв.');
-      _snack('Добавлено: ${servers.length} сервер(ов)');
+      _log.add('import_ok', 'slot added: ${servers.length}');
+      _snack(L.tParams('vpn_added_servers', {'n': '${servers.length}'}));
     } catch (_) {
-      _log.add('import_fail', 'Ошибка импорта');
-      _snack('Ошибка импорта');
+      _log.add('import_fail', 'import error');
+      _snack(L.t('vpn_import_error'));
     }
     if (mounted) setState(() => busy = false);
   }
@@ -375,7 +379,9 @@ class _VpnScreenState extends State<VpnScreen> {
             return AlertDialog(
               backgroundColor: const Color(0xFF1A1A1A),
               title: Text(
-                'Выберите до ${VpnStorageService.maxServersPerSub}',
+                L.tParams('vpn_pick_servers', {
+                  'n': '${VpnStorageService.maxServersPerSub}',
+                }),
                 style: const TextStyle(color: Colors.white, fontSize: 16),
               ),
               content: SizedBox(
@@ -416,9 +422,9 @@ class _VpnScreenState extends State<VpnScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text(
-                    'Отмена',
-                    style: TextStyle(color: Colors.white54),
+                  child: Text(
+                    L.t('cancel'),
+                    style: const TextStyle(color: Colors.white54),
                   ),
                 ),
                 TextButton(
@@ -427,7 +433,10 @@ class _VpnScreenState extends State<VpnScreen> {
                         all.where((s) => selected.contains(s.id)).toList();
                     Navigator.pop(ctx, list);
                   },
-                  child: const Text('OK', style: TextStyle(color: Colors.white)),
+                  child: Text(
+                    L.t('ok'),
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             );
@@ -442,17 +451,23 @@ class _VpnScreenState extends State<VpnScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Удалить слот?', style: TextStyle(color: Colors.white)),
+        title: Text(
+          L.t('vpn_delete_slot'),
+          style: const TextStyle(color: Colors.white),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Нет', style: TextStyle(color: Colors.white54)),
+            child: Text(
+              L.t('no'),
+              style: const TextStyle(color: Colors.white54),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Удалить',
-              style: TextStyle(color: Colors.redAccent),
+            child: Text(
+              L.t('delete'),
+              style: const TextStyle(color: Colors.redAccent),
             ),
           ),
         ],
@@ -468,13 +483,13 @@ class _VpnScreenState extends State<VpnScreen> {
     }
     setState(() => slots = slots.where((s) => s.id != slot.id).toList());
     await _persist();
-    _log.add('slot_del', 'Слот удалён');
+    _log.add('slot_del', 'slot deleted');
   }
 
   Future<void> _refreshSub(VpnSlot slot) async {
     if (slot.subscriptionUrl == null) return;
     setState(() => busy = true);
-    _log.add('sub_manual', 'Ручное обновление');
+    _log.add('sub_manual', 'manual refresh');
     try {
       final updated = await _scheduler.refreshSlot(slot);
       if (updated != null) {
@@ -485,22 +500,20 @@ class _VpnScreenState extends State<VpnScreen> {
           ];
         });
         await _persist();
-        _snack('Подписка обновлена');
+        _snack(L.t('vpn_sub_updated'));
       } else {
-        _snack(
-          'Не удалось обновить. Возможно, подписка устарела или заблокирована.',
-        );
+        _snack(L.t('vpn_sub_fail_detail'));
       }
     } catch (_) {
-      _snack('Не удалось обновить подписку');
+      _snack(L.t('vpn_sub_fail'));
     }
     if (mounted) setState(() => busy = false);
   }
 
   void _copyServer(VpnServer s) {
     Clipboard.setData(ClipboardData(text: s.rawConfig));
-    _snack('Ссылка скопирована');
-    _log.add('copy_server', 'Скопирован сервер');
+    _snack(L.t('vpn_link_copied'));
+    _log.add('copy_server', 'server copied');
   }
 
   void _exportSlot(VpnSlot slot) {
@@ -510,8 +523,8 @@ class _VpnScreenState extends State<VpnScreen> {
       buf.writeln(s.rawConfig);
     }
     Clipboard.setData(ClipboardData(text: buf.toString()));
-    _snack('Слот скопирован в буфер');
-    _log.add('export_slot', 'Экспорт слота');
+    _snack(L.t('vpn_slot_copied'));
+    _log.add('export_slot', 'slot export');
   }
 
   void _openLogs() {
@@ -526,26 +539,26 @@ class _VpnScreenState extends State<VpnScreen> {
           child: Column(
             children: [
               ListTile(
-                title: const Text(
-                  'Логи VPN',
-                  style: TextStyle(color: Colors.white),
+                title: Text(
+                  L.t('vpn_logs'),
+                  style: const TextStyle(color: Colors.white),
                 ),
                 trailing: TextButton(
                   onPressed: () {
                     _log.clear();
                     Navigator.pop(ctx);
-                    _snack('Логи очищены');
+                    _snack(L.t('vpn_logs_cleared'));
                   },
-                  child: const Text('Очистить'),
+                  child: Text(L.t('clear')),
                 ),
               ),
               const Divider(color: Colors.white12, height: 1),
               Expanded(
                 child: items.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
-                          'Пусто',
-                          style: TextStyle(color: Colors.white38),
+                          L.t('vpn_empty_logs'),
+                          style: const TextStyle(color: Colors.white38),
                         ),
                       )
                     : ListView.builder(
@@ -589,19 +602,21 @@ class _VpnScreenState extends State<VpnScreen> {
         if (!_engine.supportsTunnel && _engine.statusDetail.isNotEmpty) {
           return _engine.statusDetail;
         }
-        return slots.isEmpty ? 'Нет конфигураций' : 'Отключено';
+        return slots.isEmpty
+            ? L.t('vpn_no_configs')
+            : L.t('vpn_disconnected');
       case VpnConnState.connecting:
-        return 'Подключение…';
+        return L.t('vpn_connecting');
       case VpnConnState.connected:
-        return 'Подключено';
+        return L.t('vpn_connected');
       case VpnConnState.otherVpnActive:
-        return 'Другой VPN уже активен';
+        return L.t('vpn_other_active');
       case VpnConnState.noConfigs:
-        return 'Нет конфигураций';
+        return L.t('vpn_no_configs');
       case VpnConnState.allUnavailable:
         return _engine.statusDetail.isNotEmpty
             ? _engine.statusDetail
-            : 'Не удалось подключиться. Возможно, подписка устарела или заблокирована. Попробуйте обновить её.';
+            : L.t('vpn_all_down');
     }
   }
 
@@ -624,31 +639,31 @@ class _VpnScreenState extends State<VpnScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('VPN', style: TextStyle(color: Colors.white)),
+        title: Text(L.t('vpn_title'), style: const TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
-            tooltip: 'Логи',
+            tooltip: L.t('vpn_tooltip_logs'),
             onPressed: _openLogs,
             icon: const Icon(Icons.article_outlined, color: Colors.white70),
           ),
           IconButton(
-            tooltip: 'Обновить все',
+            tooltip: L.t('vpn_tooltip_refresh_all'),
             onPressed: busy ? null : _refreshAll,
             icon: const Icon(Icons.sync, color: Colors.white70),
           ),
           IconButton(
-            tooltip: 'Проверить пинг',
+            tooltip: L.t('vpn_tooltip_ping'),
             onPressed: busy ? null : _pingAll,
             icon: const Icon(Icons.network_check, color: Colors.white70),
           ),
           IconButton(
-            tooltip: 'QR-импорт',
+            tooltip: L.t('vpn_tooltip_qr'),
             onPressed: busy ? null : _importFromQr,
             icon: const Icon(Icons.qr_code_scanner, color: Colors.white70),
           ),
           IconButton(
-            tooltip: 'Импорт',
+            tooltip: L.t('vpn_tooltip_import'),
             onPressed: busy ? null : _showImport,
             icon: const Icon(Icons.add, color: Colors.white70),
           ),
@@ -692,8 +707,8 @@ class _VpnScreenState extends State<VpnScreen> {
                   const SizedBox(height: 6),
                   Text(
                     kIsWeb
-                        ? 'Web: только настройка конфигов'
-                        : 'Туннель появится после нативной сборки',
+                        ? L.t('vpn_web_only')
+                        : L.t('vpn_tunnel_later'),
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white38, fontSize: 11),
                   ),
@@ -708,13 +723,13 @@ class _VpnScreenState extends State<VpnScreen> {
           const Divider(color: Colors.white12),
           Expanded(
             child: slots.isEmpty
-                ? const Center(
+                ? Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32),
+                      padding: const EdgeInsets.all(32),
                       child: Text(
-                        'Нет конфигураций\n\nНажмите + или QR, чтобы добавить\nshare-ссылку, JSON или подписку',
+                        L.t('vpn_empty'),
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white38, height: 1.4),
+                        style: const TextStyle(color: Colors.white38, height: 1.4),
                       ),
                     ),
                   )
@@ -775,8 +790,8 @@ class _VpnScreenState extends State<VpnScreen> {
                           _log.add(
                             'sub_interval',
                             interval == SubRefreshInterval.hours6
-                                ? 'Автообновление 6ч'
-                                : 'Автообновление выкл',
+                                ? 'auto 6h'
+                                : 'auto off',
                           );
                         },
                       );
@@ -831,7 +846,7 @@ class _ActiveBubble extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: onPing,
-              child: const Text('Пинг', style: TextStyle(fontSize: 12)),
+              child: Text(L.t('vpn_ping'), style: const TextStyle(fontSize: 12)),
             ),
           ),
         ],
@@ -887,7 +902,7 @@ class _SlotBlock extends StatelessWidget {
                   icon:
                       const Icon(Icons.refresh, color: Colors.white54, size: 20),
                   onPressed: onRefresh,
-                  tooltip: 'Обновить сейчас',
+                  tooltip: L.t('vpn_tooltip_refresh_now'),
                 ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: Colors.white54),
@@ -908,22 +923,24 @@ class _SlotBlock extends StatelessWidget {
                   PopupMenuItem(
                     value: 'auto',
                     child: Text(
-                      'Режим: Авто${slot.selectMode == ServerSelectMode.auto ? ' ✓' : ''}',
+                      '${L.t('vpn_auto')}${slot.selectMode == ServerSelectMode.auto ? ' ✓' : ''}',
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
                   PopupMenuItem(
                     value: 'manual',
                     child: Text(
-                      'Режим: Ручной${slot.selectMode == ServerSelectMode.manual ? ' ✓' : ''}',
+                      '${L.t('vpn_manual_select')}${slot.selectMode == ServerSelectMode.manual ? ' ✓' : ''}',
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'export',
                     child: Text(
-                      'Экспорт слота',
-                      style: TextStyle(color: Colors.white),
+                      L.t('vpn_slot_copied').contains('Слот')
+                          ? 'Export'
+                          : L.t('vpn_slot_copied'),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                   if (slot.isSubscription) ...[
@@ -931,24 +948,24 @@ class _SlotBlock extends StatelessWidget {
                     PopupMenuItem(
                       value: 'ref_off',
                       child: Text(
-                        'Автообновление: выкл${slot.refreshInterval == SubRefreshInterval.off ? ' ✓' : ''}',
+                        '${L.t('vpn_auto_off')}${slot.refreshInterval == SubRefreshInterval.off ? ' ✓' : ''}',
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
                     PopupMenuItem(
                       value: 'ref_6',
                       child: Text(
-                        'Автообновление: 6ч${slot.refreshInterval == SubRefreshInterval.hours6 ? ' ✓' : ''}',
+                        '${L.t('vpn_auto_on')}${slot.refreshInterval == SubRefreshInterval.hours6 ? ' ✓' : ''}',
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
                   ],
                   const PopupMenuDivider(),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'del',
                     child: Text(
-                      'Удалить слот',
-                      style: TextStyle(color: Colors.redAccent),
+                      L.t('vpn_delete_slot'),
+                      style: const TextStyle(color: Colors.redAccent),
                     ),
                   ),
                 ],
@@ -957,8 +974,8 @@ class _SlotBlock extends StatelessWidget {
           ),
           Text(
             slot.isSubscription
-                ? 'Подписка · ${slot.servers.length} серв. · ${slot.selectMode == ServerSelectMode.auto ? "авто" : "ручной"}'
-                : 'Конфиг · ${slot.servers.length} серв.',
+                ? '${L.t('vpn_subscription_n').replaceAll('{n}', '').trim()} · ${slot.servers.length} · ${slot.selectMode == ServerSelectMode.auto ? L.t('vpn_auto') : L.t('vpn_manual_select')}'
+                : '${L.t('vpn_config_n').replaceAll('{n}', '').trim()} · ${slot.servers.length}',
             style: const TextStyle(color: Colors.white38, fontSize: 12),
           ),
           const SizedBox(height: 8),
