@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/locale_service.dart';
 import '../services/security_service.dart';
 import 'home_screen.dart';
 
@@ -20,7 +21,7 @@ class _PinLockScreenState extends State<PinLockScreen> {
     final pin = _ctrl.text.trim();
     final ok = await _security.checkPin(pin);
     if (!ok) {
-      setState(() => _error = 'Неверный PIN');
+      setState(() => _error = L.t('pin_wrong'));
       _ctrl.clear();
       return;
     }
@@ -50,7 +51,10 @@ class _PinLockScreenState extends State<PinLockScreen> {
               const SizedBox(height: 80),
               const Icon(Icons.lock_outline, color: Colors.white54, size: 48),
               const SizedBox(height: 20),
-              const Text('Введите PIN', style: TextStyle(color: Colors.white, fontSize: 24)),
+              Text(
+                L.t('pin_lock'),
+                style: const TextStyle(color: Colors.white, fontSize: 24),
+              ),
               const SizedBox(height: 40),
               TextField(
                 controller: _ctrl,
@@ -58,7 +62,11 @@ class _PinLockScreenState extends State<PinLockScreen> {
                 keyboardType: TextInputType.number,
                 maxLength: 4,
                 autofocus: true,
-                style: const TextStyle(color: Colors.white, fontSize: 28, letterSpacing: 16),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  letterSpacing: 16,
+                ),
                 textAlign: TextAlign.center,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (v) {
@@ -68,8 +76,12 @@ class _PinLockScreenState extends State<PinLockScreen> {
                   counterText: '',
                   hintText: '••••',
                   hintStyle: TextStyle(color: Colors.white24, letterSpacing: 16),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white),
+                  ),
                 ),
               ),
               if (_error != null) ...[

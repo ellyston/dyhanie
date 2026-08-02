@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/contact_invite_service.dart';
 import '../services/dialog_signal_service.dart';
+import '../services/locale_service.dart';
 import '../services/outbox_service.dart';
 import 'chat_screen.dart';
 import 'chats_screen.dart';
@@ -41,12 +42,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
   StreamSubscription? _acceptedSub;
   StreamSubscription? _msgSignalSub;
 
-  static const soundPresets = {
-    'default': 'Обычный',
-    'soft': 'Тихий',
-    'alert': 'Громкий',
-    'none': 'Без звука',
-  };
+  Map<String, String> get soundPresets => {
+        'default': L.t('sound_default'),
+        'soft': L.t('sound_soft'),
+        'alert': L.t('sound_alert'),
+        'none': L.t('sound_none'),
+      };
 
   @override
   void initState() {
@@ -76,7 +77,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _load();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('@$by принял(а) приглашение')),
+          SnackBar(
+            content: Text(L.tParams('invite_accepted', {'name': by})),
+          ),
         );
       },
     );
@@ -176,7 +179,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(result == 'ok' ? 'Приглашение отправлено @$query' : result),
+        content: Text(
+          result == 'ok'
+              ? L.tParams('invite_sent_to', {'name': query})
+              : result,
+        ),
       ),
     );
     if (result == 'ok') _globalSearch.clear();
@@ -190,7 +197,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     await _load();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('@$from добавлен в контакты')),
+      SnackBar(
+        content: Text(L.tParams('contact_added', {'name': from})),
+      ),
     );
   }
 
@@ -208,7 +217,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Приглашение @$to отменено')),
+      SnackBar(
+        content: Text(L.tParams('invite_cancelled', {'name': to})),
+      ),
     );
   }
 
@@ -217,26 +228,38 @@ class _ContactsScreenState extends State<ContactsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: Text('Заблокировать @$name?', style: const TextStyle(color: Colors.white)),
-        content: const Text(
-          'Контакт исчезнет из списка. Приглашения от него будут игнорироваться.',
-          style: TextStyle(color: Colors.white70),
+        title: Text(
+          L.tParams('block_confirm', {'name': name}),
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          L.t('block_confirm_body'),
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+            child: Text(
+              L.t('cancel'),
+              style: const TextStyle(color: Colors.white54),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Блок', style: TextStyle(color: Colors.redAccent)),
+            child: Text(
+              L.t('block_action'),
+              style: const TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
     );
     if (ok != true) return;
     await _invites.blockUser(name);
-    await _invites.declineInvite(myUsername: widget.myUsername, fromUsername: name);
+    await _invites.declineInvite(
+      myUsername: widget.myUsername,
+      fromUsername: name,
+    );
     await _load();
   }
 
@@ -251,13 +274,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: Text('Заметка: @$name', style: const TextStyle(color: Colors.white)),
+        title: Text(
+          L.tParams('note_for', {'name': name}),
+          style: const TextStyle(color: Colors.white),
+        ),
         content: TextField(
           controller: controller,
           style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Заметка',
-            hintStyle: TextStyle(color: Colors.white30),
+          decoration: InputDecoration(
+            hintText: L.t('note'),
+            hintStyle: const TextStyle(color: Colors.white30),
           ),
         ),
         actions: [
@@ -268,7 +294,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
               if (mounted) setState(() {});
               if (ctx.mounted) Navigator.pop(ctx);
             },
-            child: const Text('Сохранить', style: TextStyle(color: Colors.white)),
+            child: Text(
+              L.t('save'),
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -314,7 +343,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.chat_bubble_outline, color: Colors.white70),
-              title: const Text('Написать', style: TextStyle(color: Colors.white)),
+              title: Text(
+                L.t('write_message'),
+                style: const TextStyle(color: Colors.white),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _writeTo(name);
@@ -322,7 +354,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.note_alt_outlined, color: Colors.white70),
-              title: const Text('Заметка', style: TextStyle(color: Colors.white)),
+              title: Text(
+                L.t('note'),
+                style: const TextStyle(color: Colors.white),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _editNote(name);
@@ -330,7 +365,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.volume_up, color: Colors.white70),
-              title: const Text('Звук', style: TextStyle(color: Colors.white)),
+              title: Text(
+                L.t('sound'),
+                style: const TextStyle(color: Colors.white),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickSound(name);
@@ -338,7 +376,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.block, color: Colors.redAccent),
-              title: const Text('Заблокировать', style: TextStyle(color: Colors.redAccent)),
+              title: Text(
+                L.t('block'),
+                style: const TextStyle(color: Colors.redAccent),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _block(name);
@@ -367,7 +408,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('Контакты', style: TextStyle(color: Colors.white)),
+        title: Text(
+          L.t('contacts_title'),
+          style: const TextStyle(color: Colors.white),
+        ),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Column(
@@ -376,21 +420,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
             Material(
               color: Colors.blueAccent.withValues(alpha: 0.2),
               child: ListTile(
-                leading: const Icon(Icons.mark_email_unread, color: Colors.lightBlueAccent),
+                leading: const Icon(
+                  Icons.mark_email_unread,
+                  color: Colors.lightBlueAccent,
+                ),
                 title: Text(
-                  'Входящие сообщения: $incomingMessagesCount',
+                  L.tParams('incoming_messages', {
+                    'n': '$incomingMessagesCount',
+                  }),
                   style: const TextStyle(color: Colors.white),
                 ),
-                subtitle: const Text(
-                  'Откройте чат, чтобы прочитать',
-                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                subtitle: Text(
+                  L.t('open_chat_to_read'),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
                 trailing: const Icon(Icons.chevron_right, color: Colors.white54),
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ChatsScreen(myUsername: widget.myUsername),
+                      builder: (_) =>
+                          ChatsScreen(myUsername: widget.myUsername),
                     ),
                   );
                 },
@@ -401,9 +451,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
             return Material(
               color: Colors.orange.withValues(alpha: 0.15),
               child: ListTile(
-                leading: const Icon(Icons.person_add_alt_1, color: Colors.orangeAccent),
+                leading: const Icon(
+                  Icons.person_add_alt_1,
+                  color: Colors.orangeAccent,
+                ),
                 title: Text(
-                  '@$from приглашает вас в контакты',
+                  L.tParams('invite_from', {'name': from}),
                   style: const TextStyle(color: Colors.white),
                 ),
                 trailing: Row(
@@ -411,11 +464,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   children: [
                     TextButton(
                       onPressed: () => _decline(from),
-                      child: const Text('Нет', style: TextStyle(color: Colors.white54)),
+                      child: Text(
+                        L.t('no'),
+                        style: const TextStyle(color: Colors.white54),
+                      ),
                     ),
                     TextButton(
                       onPressed: () => _accept(from),
-                      child: const Text('Да', style: TextStyle(color: Colors.greenAccent)),
+                      child: Text(
+                        L.t('yes'),
+                        style: const TextStyle(color: Colors.greenAccent),
+                      ),
                     ),
                   ],
                 ),
@@ -428,10 +487,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
               color: Colors.white.withValues(alpha: 0.04),
               child: ListTile(
                 leading: const Icon(Icons.hourglass_top, color: Colors.white54),
-                title: Text('Ожидает @$to', style: const TextStyle(color: Colors.white70)),
+                title: Text(
+                  L.tParams('waiting_for', {'name': to}),
+                  style: const TextStyle(color: Colors.white70),
+                ),
                 trailing: TextButton(
                   onPressed: () => _cancelOutgoing(to),
-                  child: const Text('Отменить', style: TextStyle(color: Colors.orangeAccent)),
+                  child: Text(
+                    L.t('cancel_invite'),
+                    style: const TextStyle(color: Colors.orangeAccent),
+                  ),
                 ),
               ),
             );
@@ -445,9 +510,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')),
               ],
               decoration: InputDecoration(
-                hintText: 'Глобальный поиск по username',
+                hintText: L.t('global_search'),
                 hintStyle: const TextStyle(color: Colors.white30),
-                prefixIcon: const Icon(Icons.travel_explore, color: Colors.white38),
+                prefixIcon:
+                    const Icon(Icons.travel_explore, color: Colors.white38),
                 suffixIcon: globalSending
                     ? const Padding(
                         padding: EdgeInsets.all(12),
@@ -477,7 +543,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               controller: _localSearch,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Поиск по контактам...',
+                hintText: L.t('local_search'),
                 hintStyle: const TextStyle(color: Colors.white30),
                 prefixIcon: const Icon(Icons.search, color: Colors.white38),
                 filled: true,
@@ -491,8 +557,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
           Expanded(
             child: filtered.isEmpty
-                ? const Center(
-                    child: Text('Пока нет контактов', style: TextStyle(color: Colors.white38)),
+                ? Center(
+                    child: Text(
+                      L.t('no_contacts'),
+                      style: const TextStyle(color: Colors.white38),
+                    ),
                   )
                 : ListView.builder(
                     itemCount: filtered.length,
@@ -506,7 +575,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           color: Colors.redAccent,
                           alignment: Alignment.centerRight,
                           padding: const EdgeInsets.only(right: 20),
-                          child: const Icon(Icons.delete, color: Colors.white),
+                          child:
+                              const Icon(Icons.delete, color: Colors.white),
                         ),
                         onDismissed: (_) => _remove(name),
                         child: ListTile(
@@ -517,12 +587,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               style: const TextStyle(color: Colors.white),
                             ),
                           ),
-                          title: Text('@$name', style: const TextStyle(color: Colors.white)),
+                          title: Text(
+                            '@$name',
+                            style: const TextStyle(color: Colors.white),
+                          ),
                           subtitle: note.isEmpty
                               ? null
-                              : Text(note, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                              : Text(
+                                  note,
+                                  style: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 12,
+                                  ),
+                                ),
                           trailing: IconButton(
-                            icon: const Icon(Icons.more_vert, color: Colors.white54),
+                            icon: const Icon(
+                              Icons.more_vert,
+                              color: Colors.white54,
+                            ),
                             onPressed: () => _contactActions(name),
                           ),
                           onTap: () => _writeTo(name),
@@ -535,7 +617,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           if (blocked.isNotEmpty)
             ExpansionTile(
               title: Text(
-                'Чёрный список (${blocked.length})',
+                '${L.t('blacklist')} (${blocked.length})',
                 style: const TextStyle(color: Colors.white54),
               ),
               collapsedIconColor: Colors.white54,
@@ -543,10 +625,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
               children: blocked
                   .map(
                     (b) => ListTile(
-                      title: Text('@$b', style: const TextStyle(color: Colors.white70)),
+                      title: Text(
+                        '@$b',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
                       trailing: TextButton(
                         onPressed: () => _unblock(b),
-                        child: const Text('Разблок', style: TextStyle(color: Colors.white54)),
+                        child: Text(
+                          L.t('unblock_short'),
+                          style: const TextStyle(color: Colors.white54),
+                        ),
                       ),
                     ),
                   )

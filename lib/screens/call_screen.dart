@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../services/call_webrtc_service.dart';
+import '../services/locale_service.dart';
 
 class CallScreen extends StatefulWidget {
   final String roomCode;
@@ -30,7 +31,7 @@ class _CallScreenState extends State<CallScreen> {
   final _db = FirebaseDatabase.instance.ref();
   final _remoteRenderer = RTCVideoRenderer();
 
-  String statusText = 'Подключение...';
+  late String statusText;
   bool muted = false;
   bool speakerOn = false;
   bool connected = false;
@@ -47,6 +48,7 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void initState() {
     super.initState();
+    statusText = L.t('connecting');
     _initRenderer();
     _watchCallStatus();
     _startRtc();
@@ -71,7 +73,7 @@ class _CallScreenState extends State<CallScreen> {
     if (!mounted) return;
     setState(() {
       connected = true;
-      statusText = 'Идёт звонок';
+      statusText = L.t('call_in_progress');
     });
     _startTimer();
     HapticFeedback.lightImpact();
@@ -95,7 +97,7 @@ class _CallScreenState extends State<CallScreen> {
         _finish();
       }
       if (st == 'accepted' && mounted && !connected) {
-        setState(() => statusText = 'Соединение...');
+        setState(() => statusText = L.t('call_connecting'));
       }
     });
   }
@@ -103,7 +105,7 @@ class _CallScreenState extends State<CallScreen> {
   Future<void> _startRtc() async {
     final other = widget.otherUser;
     if (other == null || other.isEmpty) {
-      setState(() => statusText = 'Нет собеседника');
+      setState(() => statusText = L.t('call_no_peer'));
       return;
     }
 
@@ -131,20 +133,23 @@ class _CallScreenState extends State<CallScreen> {
       setState(() {
         if (!connected) {
           if (s == 'mic_ok') {
-            statusText = isCaller ? 'Вызов...' : 'Соединение...';
+            statusText =
+                isCaller ? L.t('call_ringing') : L.t('call_connecting');
           } else if (s == 'offer_sent') {
-            statusText = 'Вызов...';
+            statusText = L.t('call_ringing');
           } else if (s == 'answer_sent' || s == 'answer_set') {
-            statusText = 'Соединение...';
+            statusText = L.t('call_connecting');
           } else if (s == 'link_lost') {
-            statusText = 'Связь потеряна';
-          } else if (s.startsWith('Ошибка') || s.startsWith('error')) {
+            statusText = L.t('call_link_lost');
+          } else if (s.startsWith('Ошибка') ||
+              s.startsWith('error') ||
+              s.startsWith('Error')) {
             statusText = s;
           }
         }
         if (s == 'remote_audio' || s == 'connected') {
           connected = true;
-          statusText = 'Идёт звонок';
+          statusText = L.t('call_in_progress');
           _startTimer();
         }
       });
@@ -153,7 +158,11 @@ class _CallScreenState extends State<CallScreen> {
     try {
       await _rtc!.start();
     } catch (e) {
-      if (mounted) setState(() => statusText = 'Ошибка: $e');
+      if (mounted) {
+        setState(
+          () => statusText = L.tParams('call_error', {'e': '$e'}),
+        );
+      }
     }
   }
 
@@ -254,7 +263,7 @@ class _CallScreenState extends State<CallScreen> {
                     _roundBtn(
                       icon: muted ? Icons.mic_off : Icons.mic,
                       color: muted ? Colors.orangeAccent : Colors.white24,
-                      label: muted ? 'Микрофон' : 'Микрофон',
+                      label: L.t('mic'),
                       onTap: _toggleMute,
                     ),
                     _roundBtn(
@@ -266,7 +275,7 @@ class _CallScreenState extends State<CallScreen> {
                     _roundBtn(
                       icon: speakerOn ? Icons.volume_up : Icons.hearing,
                       color: speakerOn ? Colors.blueAccent : Colors.white24,
-                      label: speakerOn ? 'Динамик' : 'Ухо',
+                      label: speakerOn ? L.t('speaker') : L.t('earpiece'),
                       onTap: _toggleSpeaker,
                     ),
                   ],
@@ -284,26 +293,30 @@ class _CallScreenState extends State<CallScreen> {
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
-    bool big = false,
     String? label,
+    bool big = false,
   }) {
-    final size = big ? 72.0 : 56.0;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        InkWell(
+        GestureDetector(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(size),
           child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            width: big ? 72 : 56,
+            height: big ? 72 : 56,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
             child: Icon(icon, color: Colors.white, size: big ? 32 : 24),
           ),
         ),
-        if (label != null && !big) ...[
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        if (label != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
         ],
       ],
     );

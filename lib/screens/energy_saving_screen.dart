@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/locale_service.dart';
+
 class EnergySavingScreen extends StatefulWidget {
   const EnergySavingScreen({super.key});
 
@@ -40,24 +42,30 @@ class _EnergySavingScreenState extends State<EnergySavingScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('Энергосбережение', style: TextStyle(color: Colors.white)),
+        title: Text(
+          L.t('energy_saving'),
+          style: const TextStyle(color: Colors.white),
+        ),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: ListView(
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
-              'Настройки влияют на расход батареи. Часть опций применится после перезапуска экранов.',
-              style: TextStyle(color: Colors.white38, fontSize: 13),
+              L.t('energy_hint'),
+              style: const TextStyle(color: Colors.white38, fontSize: 13),
             ),
           ),
           SwitchListTile(
-            activeColor: Colors.white,
-            title: const Text('Меньше анимаций', style: TextStyle(color: Colors.white)),
-            subtitle: const Text(
-              'Отключить лишние переходы и эффекты',
-              style: TextStyle(color: Colors.white38),
+            activeThumbColor: Colors.white,
+            title: Text(
+              L.t('less_animations'),
+              style: const TextStyle(color: Colors.white),
+            ),
+            subtitle: Text(
+              L.t('less_animations_sub'),
+              style: const TextStyle(color: Colors.white38),
             ),
             value: reduceAnimations,
             onChanged: (v) {
@@ -66,11 +74,14 @@ class _EnergySavingScreenState extends State<EnergySavingScreen> {
             },
           ),
           SwitchListTile(
-            activeColor: Colors.white,
-            title: const Text('Пауза VPN в фоне', style: TextStyle(color: Colors.white)),
-            subtitle: const Text(
-              'Не держать туннель активно при свёрнутом приложении (когда VPN будет нативным)',
-              style: TextStyle(color: Colors.white38),
+            activeThumbColor: Colors.white,
+            title: Text(
+              L.t('pause_vpn_bg'),
+              style: const TextStyle(color: Colors.white),
+            ),
+            subtitle: Text(
+              L.t('pause_vpn_bg_sub'),
+              style: const TextStyle(color: Colors.white38),
             ),
             value: pauseVpnWhenBackground,
             onChanged: (v) {
@@ -79,11 +90,14 @@ class _EnergySavingScreenState extends State<EnergySavingScreen> {
             },
           ),
           SwitchListTile(
-            activeColor: Colors.white,
-            title: const Text('Реже обновлять online', style: TextStyle(color: Colors.white)),
-            subtitle: const Text(
-              'Снизить частоту presence-сигналов',
-              style: TextStyle(color: Colors.white38),
+            activeThumbColor: Colors.white,
+            title: Text(
+              L.t('less_presence'),
+              style: const TextStyle(color: Colors.white),
+            ),
+            subtitle: Text(
+              L.t('less_presence_sub'),
+              style: const TextStyle(color: Colors.white38),
             ),
             value: lessPresenceUpdates,
             onChanged: (v) {

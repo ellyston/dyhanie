@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/locale_service.dart';
+
 class AskQuestionScreen extends StatefulWidget {
   const AskQuestionScreen({super.key});
 
@@ -12,14 +14,13 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
   final _controller = TextEditingController();
   bool _sending = false;
 
-  // Поменяй на свой email поддержки
   static const supportEmail = 'support@dyhanie.app';
 
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Напишите вопрос')),
+        SnackBar(content: Text(L.t('ask_empty'))),
       );
       return;
     }
@@ -30,7 +31,7 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
       scheme: 'mailto',
       path: supportEmail,
       queryParameters: {
-        'subject': 'Дыхание — вопрос',
+        'subject': L.t('ask_subject'),
         'body': text,
       },
     );
@@ -39,13 +40,13 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
       final ok = await launchUrl(uri);
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось открыть почту')),
+          SnackBar(content: Text(L.t('ask_mail_fail'))),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось открыть почту')),
+          SnackBar(content: Text(L.t('ask_mail_fail'))),
         );
       }
     } finally {
@@ -65,7 +66,10 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('Задать вопрос', style: TextStyle(color: Colors.white)),
+        title: Text(
+          L.t('ask_question'),
+          style: const TextStyle(color: Colors.white),
+        ),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Padding(
@@ -73,9 +77,9 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Опишите проблему или вопрос. Откроется почтовое приложение.',
-              style: TextStyle(color: Colors.white54, fontSize: 14),
+            Text(
+              L.t('ask_hint'),
+              style: const TextStyle(color: Colors.white54, fontSize: 14),
             ),
             const SizedBox(height: 20),
             TextField(
@@ -83,7 +87,7 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
               maxLines: 8,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Ваш вопрос…',
+                hintText: L.t('ask_placeholder'),
                 hintStyle: const TextStyle(color: Colors.white30),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.06),
@@ -111,7 +115,10 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
                         height: 22,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Отправить', style: TextStyle(fontSize: 16)),
+                    : Text(
+                        L.t('send'),
+                        style: const TextStyle(fontSize: 16),
+                      ),
               ),
             ),
           ],

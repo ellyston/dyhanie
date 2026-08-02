@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'locale_service.dart';
+
 /// Режимы автоблокировки приложения.
 enum AutoLockMode {
   /// Блокировать каждый раз при уходе в фон / сворачивании.
@@ -19,9 +21,8 @@ class AutoLockService {
   static const _keyLastActive = 'auto_lock_last_active';
   static const _keyEnabled = 'auto_lock_enabled';
 
-  /// 0 = никогда (только если mode == afterTimeout и minutes == 0)
   static const minMinutes = 1;
-  static const maxMinutes = 120; // ползунок до 2ч; «никогда» = отдельная точка
+  static const maxMinutes = 120;
 
   AutoLockMode mode = AutoLockMode.afterTimeout;
   int timeoutMinutes = 5; // 0 = никогда
@@ -54,17 +55,14 @@ class AutoLockService {
     return p.getInt(_keyLastActive);
   }
 
-  /// Нужно ли показать PIN-экран.
   Future<bool> shouldLock({required bool comingFromBackground}) async {
     if (!enabled) return false;
 
     if (mode == AutoLockMode.onMinimize) {
-      // при каждом возврате из фона
       return comingFromBackground;
     }
 
-    // afterTimeout
-    if (timeoutMinutes <= 0) return false; // никогда
+    if (timeoutMinutes <= 0) return false;
 
     final last = await lastActiveMs();
     if (last == null) return true;
@@ -73,16 +71,18 @@ class AutoLockService {
     return elapsed >= timeoutMinutes * 60 * 1000;
   }
 
-  /// Подпись для UI.
+  /// Подпись для UI (локализованная).
   String get summary {
-    if (!enabled) return 'Выключена';
-    if (mode == AutoLockMode.onMinimize) return 'При сворачивании';
-    if (timeoutMinutes <= 0) return 'Никогда';
-    if (timeoutMinutes == 1) return 'Через 1 мин';
-    if (timeoutMinutes < 60) return 'Через $timeoutMinutes мин';
+    if (!enabled) return L.t('disabled');
+    if (mode == AutoLockMode.onMinimize) return L.t('lock_on_minimize');
+    if (timeoutMinutes <= 0) return L.t('never');
+    if (timeoutMinutes == 1) return L.t('after_1_min');
+    if (timeoutMinutes < 60) {
+      return L.tParams('after_n_min', {'n': '$timeoutMinutes'});
+    }
     final h = timeoutMinutes ~/ 60;
     final m = timeoutMinutes % 60;
-    if (m == 0) return 'Через $h ч';
-    return 'Через $h ч $m мин';
+    if (m == 0) return L.tParams('after_n_h', {'n': '$h'});
+    return L.tParams('after_h_m', {'h': '$h', 'm': '$m'});
   }
 }

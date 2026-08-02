@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/locale_service.dart';
+
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
 
@@ -9,44 +11,26 @@ class PrivacyPolicyScreen extends StatelessWidget {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text(
-          'Политика конфиденциальности',
-          style: TextStyle(color: Colors.white, fontSize: 18),
+        title: Text(
+          L.t('privacy_policy'),
+          style: const TextStyle(color: Colors.white, fontSize: 18),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
-        children: const [
-          _H('1. Общие положения'),
-          _P(
-            'Приложение «Дыхание» — эфемерный мессенджер. '
-            'Мы стремимся собирать минимум данных и не хранить переписку дольше необходимого.',
-          ),
-          _H('2. Какие данные используются'),
-          _P(
-            '• Username и аватар — хранятся локально на устройстве.\n'
-            '• Код комнаты / dialogId — для соединения участников.\n'
-            '• Сообщения — по умолчанию эфемерные (TTL), сервер используется временно для сигналинга.\n'
-            '• Конфиги VPN — только ваши, приложение не предоставляет серверы.',
-          ),
-          _H('3. Серверы'),
-          _P(
-            'Сейчас для сигналинга и presence может использоваться Firebase (временный backend). '
-            'В перспективе — минимальный свой сервер и P2P. '
-            'Содержимое сообщений в сохранённом режиме остаётся на вашем устройстве.',
-          ),
-          _H('4. Права пользователя'),
-          _P(
-            'Вы можете очистить кэш, удалить чаты, сменить PIN и полностью стереть локальные данные '
-            'через «Удалить всё» в профиле.',
-          ),
-          _H('5. Контакты'),
-          _P(
-            'По вопросам приватности: support@dyhanie.app\n\n'
-            'Текст будет обновлён перед публикацией в магазинах.',
-          ),
-          SizedBox(height: 40),
+        children: [
+          _H(L.t('privacy_h1')),
+          _P(L.t('privacy_p1')),
+          _H(L.t('privacy_h2')),
+          _P(L.t('privacy_p2')),
+          _H(L.t('privacy_h3')),
+          _P(L.t('privacy_p3')),
+          _H(L.t('privacy_h4')),
+          _P(L.t('privacy_p4')),
+          _H(L.t('privacy_h5')),
+          _P(L.t('privacy_p5')),
+          const SizedBox(height: 40),
         ],
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/locale_service.dart';
 import '../services/security_service.dart';
 import 'create_profile_screen.dart';
 import 'home_screen.dart';
@@ -29,7 +30,6 @@ class _SplashScreenState extends State<SplashScreen> {
 
     final pinSet = await _security.isPinSet();
 
-    // Первый запуск — приветствие с кнопкой
     if (!pinSet) {
       Navigator.pushReplacement(
         context,
@@ -67,12 +67,12 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: Colors.black,
       body: Center(
         child: Text(
-          'Дыхание',
-          style: TextStyle(
+          L.t('app_name'),
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 36,
             fontWeight: FontWeight.w300,

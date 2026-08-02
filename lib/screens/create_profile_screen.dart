@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/contact_invite_service.dart';
+import '../services/locale_service.dart';
 import 'home_screen.dart';
 
 class CreateProfileScreen extends StatefulWidget {
@@ -24,7 +25,10 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   bool _saving = false;
 
   Future<void> _pickAvatar() async {
-    final img = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 512);
+    final img = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+    );
     if (img != null) {
       final bytes = await img.readAsBytes();
       setState(() => _avatar = bytes);
@@ -34,7 +38,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   Future<void> _save() async {
     final username = _controller.text.trim().toLowerCase();
     if (username.length < 3 || !RegExp(r'^[a-z0-9]+$').hasMatch(username)) {
-      setState(() => _error = 'Только a-z и цифры, минимум 3 символа');
+      setState(() => _error = L.t('username_invalid'));
       return;
     }
 
@@ -50,7 +54,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
         await prefs.setString('avatar', base64Encode(_avatar!));
       }
 
-      // регистрация ника для глобального поиска
       await ContactInviteService().registerUsername(username);
 
       if (!mounted) return;
@@ -61,7 +64,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Ошибка сохранения';
+          _error = L.t('save_error');
           _saving = false;
         });
       }
@@ -84,15 +87,19 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
           child: Column(
             children: [
               const SizedBox(height: 40),
-              const Text(
-                'Профиль',
-                style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300),
+              Text(
+                L.t('profile'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w300,
+                ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Придумайте username — по нему вас найдут',
+              Text(
+                L.t('profile_subtitle'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white54, fontSize: 14),
+                style: const TextStyle(color: Colors.white54, fontSize: 14),
               ),
               const SizedBox(height: 40),
               GestureDetector(
@@ -100,14 +107,22 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 child: CircleAvatar(
                   radius: 55,
                   backgroundColor: Colors.white12,
-                  backgroundImage: _avatar != null ? MemoryImage(_avatar!) : null,
+                  backgroundImage:
+                      _avatar != null ? MemoryImage(_avatar!) : null,
                   child: _avatar == null
-                      ? const Icon(Icons.add_a_photo, color: Colors.white54, size: 32)
+                      ? const Icon(
+                          Icons.add_a_photo,
+                          color: Colors.white54,
+                          size: 32,
+                        )
                       : null,
                 ),
               ),
               const SizedBox(height: 10),
-              const Text('Аватар (необязательно)', style: TextStyle(color: Colors.white38, fontSize: 13)),
+              Text(
+                L.t('avatar_optional'),
+                style: const TextStyle(color: Colors.white38, fontSize: 13),
+              ),
               const SizedBox(height: 40),
               TextField(
                 controller: _controller,
@@ -116,7 +131,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                   FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')),
                 ],
                 decoration: InputDecoration(
-                  labelText: 'Username',
+                  labelText: L.t('username'),
                   labelStyle: const TextStyle(color: Colors.white54),
                   errorText: _error,
                   enabledBorder: const UnderlineInputBorder(
@@ -147,7 +162,10 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Продолжить', style: TextStyle(fontSize: 16)),
+                      : Text(
+                          L.t('continue'),
+                          style: const TextStyle(fontSize: 16),
+                        ),
                 ),
               ),
             ],

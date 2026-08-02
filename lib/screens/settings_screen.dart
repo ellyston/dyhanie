@@ -48,7 +48,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const PrivacyPolicyScreen(),
+                ),
               );
             },
           ),
@@ -86,9 +88,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () {
               showAboutDialog(
                 context: context,
-                applicationName: 'Дыхание',
+                applicationName: L.t('app_name'),
                 applicationVersion: '0.1.0',
-                applicationLegalese: 'Эфемерный приватный мессенджер',
+                applicationLegalese: L.t('about_legalese'),
               );
             },
           ),

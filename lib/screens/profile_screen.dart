@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/locale_service.dart';
+
 class ProfileScreen extends StatefulWidget {
   final String username;
   final Uint8List? avatarBytes;
@@ -67,7 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Аватар обновлён')),
+      SnackBar(content: Text(L.t('avatar_updated'))),
     );
   }
 
@@ -75,7 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final name = _nameCtrl.text.trim().toLowerCase();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите username')),
+        SnackBar(content: Text(L.t('enter_username'))),
       );
       return;
     }
@@ -91,7 +93,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
     setState(() => saving = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Сохранено')),
+      SnackBar(content: Text(L.t('saved'))),
     );
     Navigator.pop(context);
   }
@@ -101,24 +103,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Удалить всё полностью?',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          L.t('delete_all_title'),
+          style: const TextStyle(color: Colors.white),
         ),
-        content: const Text(
-          'Будут стёрты локальные данные приложения. Это нельзя отменить.',
-          style: TextStyle(color: Colors.white70),
+        content: Text(
+          L.t('delete_all_body'),
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+            child: Text(
+              L.t('cancel'),
+              style: const TextStyle(color: Colors.white54),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Удалить',
-              style: TextStyle(color: Colors.redAccent),
+            child: Text(
+              L.t('delete'),
+              style: const TextStyle(color: Colors.redAccent),
             ),
           ),
         ],
@@ -131,9 +136,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Локальные данные удалены')),
+      SnackBar(content: Text(L.t('data_deleted'))),
     );
-    // при необходимости: выход на welcome / splash
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
@@ -150,14 +154,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        title: const Text('Профиль', style: TextStyle(color: Colors.white)),
+        title: Text(
+          L.t('profile'),
+          style: const TextStyle(color: Colors.white),
+        ),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
         children: [
           const SizedBox(height: 12),
-          // круглый аватар как раньше
           Center(
             child: Column(
               children: [
@@ -181,18 +187,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 10),
                 GestureDetector(
                   onTap: _changeAvatar,
-                  child: const Text(
-                    'Сменить аватар',
-                    style: TextStyle(color: Colors.white38, fontSize: 13),
+                  child: Text(
+                    L.t('change_avatar'),
+                    style: const TextStyle(color: Colors.white38, fontSize: 13),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 36),
-          const Text(
-            'Username',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
+          Text(
+            L.t('username'),
+            style: const TextStyle(color: Colors.white38, fontSize: 12),
           ),
           TextField(
             controller: _nameCtrl,
@@ -228,9 +234,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       height: 22,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text(
-                      'Сохранить',
-                      style: TextStyle(
+                  : Text(
+                      L.t('save'),
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -250,17 +256,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               onPressed: _deleteEverything,
-              child: const Text(
-                'Удалить всё полностью',
-                style: TextStyle(fontSize: 15),
+              child: Text(
+                L.t('delete_all'),
+                style: const TextStyle(fontSize: 15),
               ),
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Стирает локальные данные. Удаление иконки приложения — через настройки системы.',
+          Text(
+            L.t('delete_all_hint'),
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white24, fontSize: 11, height: 1.3),
+            style: const TextStyle(
+              color: Colors.white24,
+              fontSize: 11,
+              height: 1.3,
+            ),
           ),
         ],
       ),
