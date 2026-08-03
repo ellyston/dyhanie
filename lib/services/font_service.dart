@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'locale_service.dart';
+
 
 /// Чтобы добавить шрифт:
 /// 1) запись в [catalog]
@@ -70,4 +72,17 @@ class FontService {
         return base;
     }
   }
+   static const Map<String, String> catalog = {
+    'system': 'font_system',
+    'outfit': 'font_outfit',
+    'cormorant': 'font_cormorant',
+  };
+
+  static String label(String code) {
+    final key = catalog[code];
+    if (key == null) return code;
+    // ignore: unnecessary_import — locale уже в проекте
+    return L.t(key);
+  }
+
 }

@@ -431,6 +431,15 @@ class LocaleService {
       'recovery_phrase_menu_sub': 'Показать или создать заново',
       'restore_phrase_menu': 'Восстановить по фразе',
       'restore_phrase_menu_sub': 'Вход на этом устройстве по 24 словам',
+      'logout': 'Выход',
+      'call_calling': 'Вызов…',
+      'image_load_error': 'Изображение',
+      'font_system': 'Системный',
+      'font_outfit': 'Outfit',
+      'font_cormorant': 'Cormorant',
+      'icon_outlined': 'Outlined',
+      'icon_rounded': 'Rounded',
+      'icon_sharp': 'Sharp',
     },
 
     // ═══════════════════════════════════════
@@ -798,6 +807,15 @@ class LocaleService {
       'recovery_phrase_menu_sub': 'Show or create again',
       'restore_phrase_menu': 'Restore from phrase',
       'restore_phrase_menu_sub': 'Set up this device with 24 words',
+      'logout': 'Log out',
+      'call_calling': 'Calling…',
+      'image_load_error': 'Image',
+      'font_system': 'System',
+      'font_outfit': 'Outfit',
+      'font_cormorant': 'Cormorant',
+      'icon_outlined': 'Outlined',
+      'icon_rounded': 'Rounded',
+      'icon_sharp': 'Sharp',
     },
 
     // ═══════════════════════════════════════
@@ -1166,6 +1184,15 @@ class LocaleService {
       'recovery_phrase_menu_sub': 'Anzeigen oder neu erstellen',
       'restore_phrase_menu': 'Mit Phrase wiederherstellen',
       'restore_phrase_menu_sub': 'Dieses Gerät mit 24 Wörtern einrichten',
+      'logout': 'Abmelden',
+      'call_calling': 'Anrufen…',
+      'image_load_error': 'Bild',
+      'font_system': 'System',
+      'font_outfit': 'Outfit',
+      'font_cormorant': 'Cormorant',
+      'icon_outlined': 'Outlined',
+      'icon_rounded': 'Rounded',
+      'icon_sharp': 'Sharp',
     },
   };
 }

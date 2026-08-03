@@ -142,7 +142,7 @@ class ChatMessageList extends StatelessWidget {
                           fit: BoxFit.cover,
                           width: 200,
                           errorBuilder: (_, __, ___) => Text(
-                            'Image',
+                            L.t('image_load_error'),,
                             style: FontService.style(fontSize: 40, color: onSurf),
                           ),
                         ),

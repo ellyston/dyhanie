@@ -184,13 +184,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _section(String title) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Text(
         title,
-        style: TextStyle(
-          color:
-              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
+        style: FontService.style(
+          color: onSurf.withValues(alpha: 0.45),
           fontSize: 12,
           letterSpacing: 0.8,
         ),
@@ -207,10 +207,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final onSurf = Theme.of(context).colorScheme.onSurface;
     return ListTile(
       leading: Icon(icon, color: onSurf.withValues(alpha: 0.75)),
-      title: Text(title, style: TextStyle(color: onSurf)),
+      title: Text(
+        title,
+        style: FontService.style(color: onSurf),
+      ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(color: onSurf.withValues(alpha: 0.45)),
+        style: FontService.style(
+          color: onSurf.withValues(alpha: 0.45),
+        ),
       ),
       trailing: Icon(AppIcons.chevron, color: onSurf.withValues(alpha: 0.3)),
       onTap: onTap,

@@ -146,5 +146,16 @@ class AppIcons {
         Icons.more_vert_rounded,
         Icons.more_vert,
       );
+  static const Map<String, String> catalog = {
+      'icon_outlined',
+      'icon_rounded',
+      'icon_sharp',
+  };
+
+  static String label(String code) {
+    final key = catalog[code];
+    if (key == null) return code;
+    return L.t(key);
+  }
 
 }
