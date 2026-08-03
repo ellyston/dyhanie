@@ -5,15 +5,19 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/font_service.dart';
+import '../services/icon_style_controller.dart';
+import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
+import 'auto_lock_settings_screen.dart';
 import 'chat_screen.dart';
 import 'chats_screen.dart';
 import 'contacts_screen.dart';
 import 'join_room_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
-import 'auto_lock_settings_screen.dart';
 import 'vpn_screen.dart';
+import 'welcome_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -50,24 +54,34 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _logout() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const WelcomeScreen(goHomeOnContinue: true),
+      ),
+      (_) => false,
+    );
+  }
+
   Future<void> _clearCache() async {
+    final scheme = Theme.of(context).colorScheme;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(L.t('clear_cache_title'), style: const TextStyle(color: Colors.white)),
-        content: Text(
-          L.t('clear_cache_body'),
-          style: const TextStyle(color: Colors.white70),
-        ),
+        backgroundColor: scheme.surfaceContainerHigh,
+        title: Text(L.t('clear_cache_title')),
+        content: Text(L.t('clear_cache_body')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(L.t('cancel'), style: const TextStyle(color: Colors.white54)),
+            child: Text(L.t('cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(L.t('clear'), style: const TextStyle(color: Colors.redAccent)),
+            child: Text(
+              L.t('clear'),
+              style: const TextStyle(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -97,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required VoidCallback onTap,
     int badge = 0,
   }) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -109,18 +124,19 @@ class _HomeScreenState extends State<HomeScreen> {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: onSurf.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white24),
+                border: Border.all(color: onSurf.withValues(alpha: 0.2)),
               ),
-              child: Icon(icon, color: Colors.white70, size: 26),
+              child: Icon(icon, color: onSurf.withValues(alpha: 0.75), size: 26),
             ),
             if (badge > 0)
               Positioned(
                 right: -4,
                 top: -4,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   decoration: BoxDecoration(
                     color: Colors.redAccent,
                     borderRadius: BorderRadius.circular(10),
@@ -152,195 +168,236 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        leading: IconButton(
-          tooltip: L.t('settings'),
-          icon: const Icon(Icons.settings_outlined, color: Colors.white70),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            );
-          },
-        ),
-        actions: [
-          IconButton(
-            tooltip: L.t('auto_lock'),
-            icon: const Icon(Icons.timer_outlined, color: Colors.white70),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AutoLockSettingsScreen()),
-              );
-            },
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+
+    return AnimatedBuilder(
+      animation: IconStyleController.instance,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: bg,
+          appBar: AppBar(
+            backgroundColor: bg,
+            elevation: 0,
+            toolbarHeight: 96,
+            leadingWidth: 56,
+            leading: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  tooltip: L.t('settings'),
+                  icon: Icon(AppIcons.settings, color: onSurf.withValues(alpha: 0.75)),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                    );
+                  },
+                ),
+                IconButton(
+                  tooltip: L.t('logout'),
+                  icon: Icon(AppIcons.logout, color: onSurf.withValues(alpha: 0.55)),
+                  onPressed: _logout,
+                ),
+              ],
+            ),
+            actions: [
+              IconButton(
+                tooltip: L.t('auto_lock'),
+                icon: Icon(AppIcons.timer, color: onSurf.withValues(alpha: 0.75)),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AutoLockSettingsScreen(),
+                    ),
+                  );
+                },
+              ),
+              IconButton(
+                tooltip: L.t('clear_cache'),
+                icon: Icon(AppIcons.clean, color: onSurf.withValues(alpha: 0.75)),
+                onPressed: _clearCache,
+              ),
+              IconButton(
+                tooltip: L.t('vpn'),
+                icon: Icon(AppIcons.shield, color: onSurf.withValues(alpha: 0.75)),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const VpnScreen()),
+                  );
+                },
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: L.t('clear_cache'),
-            icon: const Icon(Icons.cleaning_services_outlined, color: Colors.white70),
-            onPressed: _clearCache,
-          ),
-          IconButton(
-            tooltip: L.t('vpn'),
-            icon: const Icon(Icons.shield_outlined, color: Colors.white70),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const VpnScreen()),
-              );
-            },
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GestureDetector(
-                    onTap: _openProfile,
-                    child: Column(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(24),
-                          child: SizedBox(
-                            width: 192,
-                            height: 288,
-                            child: avatarBytes != null && avatarBytes!.isNotEmpty
-                                ? Image.memory(
-                                    avatarBytes!,
-                                    fit: BoxFit.cover,
-                                    width: 192,
-                                    height: 288,
-                                    gaplessPlayback: true,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      color: Colors.white12,
-                                      alignment: Alignment.center,
-                                      child: const Icon(Icons.broken_image, color: Colors.white38),
-                                    ),
-                                  )
-                                : Container(
-                                    color: Colors.white12,
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      username.isNotEmpty ? username[0].toUpperCase() : '?',
-                                      style: const TextStyle(color: Colors.white, fontSize: 64),
+          body: SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: _openProfile,
+                        child: Column(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(24),
+                              child: SizedBox(
+                                width: 192,
+                                height: 288,
+                                child: avatarBytes != null &&
+                                        avatarBytes!.isNotEmpty
+                                    ? Image.memory(
+                                        avatarBytes!,
+                                        fit: BoxFit.cover,
+                                        width: 192,
+                                        height: 288,
+                                        gaplessPlayback: true,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          color: onSurf.withValues(alpha: 0.08),
+                                          alignment: Alignment.center,
+                                          child: Icon(
+                                            Icons.broken_image,
+                                            color: onSurf.withValues(alpha: 0.35),
+                                          ),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: onSurf.withValues(alpha: 0.08),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          username.isNotEmpty
+                                              ? username[0].toUpperCase()
+                                              : '?',
+                                          style: FontService.style(
+                                            fontSize: 64,
+                                            color: onSurf,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Text(
+                              '@$username',
+                              style: FontService.style(
+                                fontSize: 18,
+                                color: onSurf.withValues(alpha: 0.75),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              L.t('profile'),
+                              style: FontService.style(
+                                fontSize: 12,
+                                color: onSurf.withValues(alpha: 0.35),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        L.t('app_name'),
+                        style: FontService.style(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w300,
+                          letterSpacing: 3,
+                          color: onSurf,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 28,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _roundAction(
+                              icon: AppIcons.add,
+                              tooltip: L.t('create_room'),
+                              onTap: () {
+                                final code = _generateRoomCode();
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ChatScreen(
+                                      roomCode: code,
+                                      username: username,
                                     ),
                                   ),
-                          ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 28),
+                            _roundAction(
+                              icon: AppIcons.login,
+                              tooltip: L.t('join_by_code'),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        JoinRoomScreen(username: username),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 14),
-                        Text(
-                          '@$username',
-                          style: const TextStyle(color: Colors.white70, fontSize: 18),
+                      ),
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _roundAction(
+                              icon: AppIcons.chat,
+                              tooltip: L.t('saved_chats'),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ChatsScreen(myUsername: username),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 28),
+                            _roundAction(
+                              icon: AppIcons.contacts,
+                              tooltip: L.t('contacts'),
+                              badge: contactsBadge,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ContactsScreen(myUsername: username),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          L.t('profile'),
-                          style: const TextStyle(color: Colors.white30, fontSize: 12),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 28),
-                  Text(
-                    L.t('app_name'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 36,
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: 3,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 28,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _roundAction(
-                          icon: Icons.add,
-                          tooltip: L.t('create_room'),
-                          onTap: () {
-                            final code = _generateRoomCode();
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(
-                                  roomCode: code,
-                                  username: username,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 28),
-                        _roundAction(
-                          icon: Icons.login,
-                          tooltip: L.t('join_by_code'),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => JoinRoomScreen(username: username),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _roundAction(
-                          icon: Icons.chat_bubble_outline,
-                          tooltip: L.t('saved_chats'),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatsScreen(myUsername: username),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 28),
-                        _roundAction(
-                          icon: Icons.contacts_outlined,
-                          tooltip: L.t('contacts'),
-                          badge: contactsBadge,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ContactsScreen(myUsername: username),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

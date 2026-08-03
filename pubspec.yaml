@@ -23,6 +23,7 @@ dependencies:
   flutter_webrtc: ^0.12.1+hotfix.1
   mobile_scanner: ^5.2.3
   characters: ^1.3.0
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
@@ -31,4 +32,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-http: ^1.2.0
+  assets:
+    - assets/images/welcome_logo.png
+    - assets/images/welcome_bg.png

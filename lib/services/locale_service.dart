@@ -396,6 +396,18 @@ class LocaleService {
       'call_error': 'Ошибка: {e}',
       'mic': 'Микрофон',
       'earpiece': 'Ухо',
+      'appearance': 'Оформление',
+      'font': 'Шрифт',
+      'font_sub': 'Системный и дополнительные',
+      'icon_style': 'Иконки',
+      'icon_style_sub': 'Outlined, Rounded, Sharp',
+      'theme': 'Тема',
+      'theme_sub': 'Светлая, тёмная, по времени',
+      'theme_light': 'Светлая',
+      'theme_dark': 'Тёмная',
+      'theme_auto': 'Авто (по времени суток)',
+      'theme_auto_hint': 'Тёмная с 21:00 до 7:00',
+
     },
 
     // ═══════════════════════════════════════
@@ -727,6 +739,18 @@ class LocaleService {
       'call_error': 'Error: {e}',
       'mic': 'Mic',
       'earpiece': 'Earpiece',
+      'appearance': 'Appearance',
+      'font': 'Font',
+      'font_sub': 'System and extras',
+      'icon_style': 'Icons',
+      'icon_style_sub': 'Outlined, Rounded, Sharp',
+      'theme': 'Theme',
+      'theme_sub': 'Light, dark, by time',
+      'theme_light': 'Light',
+      'theme_dark': 'Dark',
+      'theme_auto': 'Auto (by time of day)',
+      'theme_auto_hint': 'Dark from 21:00 to 7:00',
+
     },
 
     // ═══════════════════════════════════════
@@ -1059,6 +1083,18 @@ class LocaleService {
       'call_error': 'Fehler: {e}',
       'mic': 'Mikrofon',
       'earpiece': 'Ohrhörer',
+      'appearance': 'Erscheinungsbild',
+      'font': 'Schrift',
+      'font_sub': 'System und weitere',
+      'icon_style': 'Symbole',
+      'icon_style_sub': 'Outlined, Rounded, Sharp',
+      'theme': 'Design',
+      'theme_sub': 'Hell, dunkel, nach Zeit',
+      'theme_light': 'Hell',
+      'theme_dark': 'Dunkel',
+      'theme_auto': 'Auto (nach Tageszeit)',
+      'theme_auto_hint': 'Dunkel von 21:00 bis 7:00',
+
     },
   };
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/security_service.dart';
 import 'create_profile_screen.dart';
@@ -67,15 +68,18 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       body: Center(
         child: Text(
           L.t('app_name'),
-          style: const TextStyle(
-            color: Colors.white,
+          style: FontService.style(
             fontSize: 36,
             fontWeight: FontWeight.w300,
+            color: onSurf,
           ),
         ),
       ),
