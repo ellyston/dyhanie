@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../services/call_webrtc_service.dart';
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class CallScreen extends StatefulWidget {
@@ -48,12 +49,11 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void initState() {
     super.initState();
-    statusText = L.t('connecting');
+    statusText = L.t('call_connecting');
     _initRenderer();
     _watchCallStatus();
     _startRtc();
 
-    // если не ответили / не соединились — 45 сек
     _ringTimeout = Timer(const Duration(seconds: 45), () async {
       if (!connected && mounted && !_closing) {
         await _db.child('rooms').child(widget.roomCode).child('call').update({
@@ -134,16 +134,14 @@ class _CallScreenState extends State<CallScreen> {
         if (!connected) {
           if (s == 'mic_ok') {
             statusText =
-                isCaller ? L.t('call_ringing') : L.t('call_connecting');
+                isCaller ? L.t('call_calling') : L.t('call_connecting');
           } else if (s == 'offer_sent') {
-            statusText = L.t('call_ringing');
+            statusText = L.t('call_calling');
           } else if (s == 'answer_sent' || s == 'answer_set') {
             statusText = L.t('call_connecting');
           } else if (s == 'link_lost') {
             statusText = L.t('call_link_lost');
-          } else if (s.startsWith('Ошибка') ||
-              s.startsWith('error') ||
-              s.startsWith('Error')) {
+          } else if (s.startsWith('Ошибка') || s.startsWith('error')) {
             statusText = s;
           }
         }
@@ -158,11 +156,7 @@ class _CallScreenState extends State<CallScreen> {
     try {
       await _rtc!.start();
     } catch (e) {
-      if (mounted) {
-        setState(
-          () => statusText = L.tParams('call_error', {'e': '$e'}),
-        );
-      }
+      if (mounted) setState(() => statusText = '${L.t('error')}: $e');
     }
   }
 
@@ -225,9 +219,11 @@ class _CallScreenState extends State<CallScreen> {
   @override
   Widget build(BuildContext context) {
     final other = widget.otherUser ?? '…';
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       body: SafeArea(
         child: Stack(
           children: [
@@ -243,18 +239,21 @@ class _CallScreenState extends State<CallScreen> {
                 const SizedBox(height: 48),
                 Icon(
                   connected ? Icons.phone_in_talk : Icons.ring_volume,
-                  color: Colors.white54,
+                  color: onSurf.withValues(alpha: 0.55),
                   size: 48,
                 ),
                 const SizedBox(height: 20),
                 Text(
                   '@$other',
-                  style: const TextStyle(color: Colors.white, fontSize: 28),
+                  style: FontService.style(fontSize: 28, color: onSurf),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   connected ? _timeLabel : statusText,
-                  style: const TextStyle(color: Colors.white54, fontSize: 16),
+                  style: FontService.style(
+                    fontSize: 16,
+                    color: onSurf.withValues(alpha: 0.55),
+                  ),
                 ),
                 const Spacer(),
                 Row(
@@ -262,7 +261,9 @@ class _CallScreenState extends State<CallScreen> {
                   children: [
                     _roundBtn(
                       icon: muted ? Icons.mic_off : Icons.mic,
-                      color: muted ? Colors.orangeAccent : Colors.white24,
+                      color: muted
+                          ? Colors.orangeAccent
+                          : onSurf.withValues(alpha: 0.2),
                       label: L.t('mic'),
                       onTap: _toggleMute,
                     ),
@@ -274,7 +275,9 @@ class _CallScreenState extends State<CallScreen> {
                     ),
                     _roundBtn(
                       icon: speakerOn ? Icons.volume_up : Icons.hearing,
-                      color: speakerOn ? Colors.blueAccent : Colors.white24,
+                      color: speakerOn
+                          ? Colors.blueAccent
+                          : onSurf.withValues(alpha: 0.2),
                       label: speakerOn ? L.t('speaker') : L.t('earpiece'),
                       onTap: _toggleSpeaker,
                     ),
@@ -293,29 +296,32 @@ class _CallScreenState extends State<CallScreen> {
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
-    String? label,
     bool big = false,
+    String? label,
   }) {
+    final size = big ? 72.0 : 56.0;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        GestureDetector(
+        InkWell(
           onTap: onTap,
+          borderRadius: BorderRadius.circular(size),
           child: Container(
-            width: big ? 72 : 56,
-            height: big ? 72 : 56,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            width: size,
+            height: size,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             child: Icon(icon, color: Colors.white, size: big ? 32 : 24),
           ),
         ),
-        if (label != null) ...[
-          const SizedBox(height: 8),
+        if (label != null && !big) ...[
+          const SizedBox(height: 6),
           Text(
             label,
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+            style: FontService.style(
+              fontSize: 11,
+              color: onSurf.withValues(alpha: 0.4),
+            ),
           ),
         ],
       ],

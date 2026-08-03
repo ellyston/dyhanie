@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../services/font_service.dart';
+import '../services/locale_service.dart';
 import 'chat_screen.dart';
 
 class JoinRoomScreen extends StatefulWidget {
@@ -20,12 +23,18 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text('Вход в комнату', style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: bg,
+        title: Text(
+          L.t('join_by_code'),
+          style: FontService.style(fontSize: 18, color: onSurf),
+        ),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
@@ -35,18 +44,25 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
             TextField(
               controller: _controller,
               textCapitalization: TextCapitalization.characters,
-              style: const TextStyle(color: Colors.white, fontSize: 28, letterSpacing: 10),
+              style: FontService.style(
+                fontSize: 28,
+                letterSpacing: 10,
+                color: onSurf,
+              ),
               textAlign: TextAlign.center,
               maxLength: 6,
-              decoration: const InputDecoration(
-                hintText: 'КОД',
-                hintStyle: TextStyle(color: Colors.white30, letterSpacing: 10),
+              decoration: InputDecoration(
+                hintText: L.t('room_code'),
+                hintStyle: TextStyle(
+                  color: onSurf.withValues(alpha: 0.3),
+                  letterSpacing: 10,
+                ),
                 counterText: '',
                 enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
+                  borderSide: BorderSide(color: onSurf.withValues(alpha: 0.25)),
                 ),
                 focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white),
+                  borderSide: BorderSide(color: onSurf),
                 ),
               ),
             ),
@@ -56,9 +72,11 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
               height: 56,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  backgroundColor: onSurf,
+                  foregroundColor: bg,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
                 onPressed: () {
                   final code = _controller.text.trim().toUpperCase();
@@ -66,12 +84,18 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ChatScreen(roomCode: code, username: widget.username),
+                        builder: (_) => ChatScreen(
+                          roomCode: code,
+                          username: widget.username,
+                        ),
                       ),
                     );
                   }
                 },
-                child: const Text('Войти', style: TextStyle(fontSize: 18)),
+                child: Text(
+                  L.t('join'),
+                  style: FontService.style(fontSize: 18, color: bg),
+                ),
               ),
             ),
           ],

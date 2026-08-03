@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/security_service.dart';
 import 'create_profile_screen.dart';
@@ -61,8 +62,11 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -73,17 +77,20 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
               Text(
                 L.t('app_name'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: FontService.style(
                   fontSize: 32,
                   fontWeight: FontWeight.w300,
+                  color: onSurf,
                 ),
               ),
               const SizedBox(height: 12),
               Text(
                 L.t('pin_hint'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white54, fontSize: 14),
+                style: FontService.style(
+                  fontSize: 14,
+                  color: onSurf.withValues(alpha: 0.55),
+                ),
               ),
               const SizedBox(height: 40),
               TextField(
@@ -91,22 +98,25 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                 obscureText: true,
                 keyboardType: TextInputType.number,
                 maxLength: 4,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: FontService.style(
                   fontSize: 28,
                   letterSpacing: 16,
+                  color: onSurf,
                 ),
                 textAlign: TextAlign.center,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   counterText: '',
                   hintText: '••••',
-                  hintStyle: TextStyle(color: Colors.white24, letterSpacing: 16),
+                  hintStyle: TextStyle(
+                    color: onSurf.withValues(alpha: 0.25),
+                    letterSpacing: 16,
+                  ),
                   enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
+                    borderSide: BorderSide(color: onSurf.withValues(alpha: 0.25)),
                   ),
                   focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white),
+                    borderSide: BorderSide(color: onSurf),
                   ),
                 ),
               ),
@@ -116,25 +126,25 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                 obscureText: true,
                 keyboardType: TextInputType.number,
                 maxLength: 4,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: FontService.style(
                   fontSize: 28,
                   letterSpacing: 16,
+                  color: onSurf,
                 ),
                 textAlign: TextAlign.center,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
                   counterText: '',
                   hintText: L.t('pin_again'),
-                  hintStyle: const TextStyle(
-                    color: Colors.white24,
+                  hintStyle: TextStyle(
+                    color: onSurf.withValues(alpha: 0.25),
                     letterSpacing: 8,
                   ),
-                  enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: onSurf.withValues(alpha: 0.25)),
                   ),
-                  focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: onSurf),
                   ),
                 ),
               ),
@@ -151,8 +161,8 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                 height: 54,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
+                    backgroundColor: onSurf,
+                    foregroundColor: bg,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -160,7 +170,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                   onPressed: _save,
                   child: Text(
                     L.t('continue'),
-                    style: const TextStyle(fontSize: 17),
+                    style: FontService.style(fontSize: 17, color: bg),
                   ),
                 ),
               ),

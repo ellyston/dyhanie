@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
-/// Базовый набор + кастомные из SharedPreferences (ключ emoji_custom)
 class EmojiPickerScreen extends StatefulWidget {
   const EmojiPickerScreen({super.key});
 
@@ -49,34 +49,45 @@ class _EmojiPickerScreenState extends State<EmojiPickerScreen> {
 
   Future<void> _addCustom() async {
     final ctrl = TextEditingController();
+    final scheme = Theme.of(context).colorScheme;
     final value = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(L.t('add_emoji'), style: const TextStyle(color: Colors.white)),
+        backgroundColor: scheme.surfaceContainerHigh,
+        title: Text(
+          L.t('add_emoji'),
+          style: FontService.style(color: scheme.onSurface),
+        ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          style: const TextStyle(color: Colors.white, fontSize: 28),
+          style: FontService.style(fontSize: 28, color: scheme.onSurface),
           decoration: InputDecoration(
             hintText: '🙂',
-            hintStyle: const TextStyle(color: Colors.white30),
+            hintStyle: TextStyle(color: scheme.onSurface.withValues(alpha: 0.3)),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(L.t('cancel'), style: const TextStyle(color: Colors.white54)),
+            child: Text(
+              L.t('cancel'),
+              style: FontService.style(
+                color: scheme.onSurface.withValues(alpha: 0.55),
+              ),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: Text(L.t('save'), style: const TextStyle(color: Colors.greenAccent)),
+            child: Text(
+              L.t('save'),
+              style: const TextStyle(color: Colors.greenAccent),
+            ),
           ),
         ],
       ),
     );
     if (value == null || value.isEmpty) return;
-    // берём первый «кластер» (emoji)
     final emoji = value.characters.first;
     if (_custom.contains(emoji) || _builtin.contains(emoji)) return;
     final next = [..._custom, emoji];
@@ -91,24 +102,29 @@ class _EmojiPickerScreenState extends State<EmojiPickerScreen> {
   @override
   Widget build(BuildContext context) {
     final all = [..._custom, ..._builtin];
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text(L.t('emoji'), style: const TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: bg,
+        title: Text(
+          L.t('emoji'),
+          style: FontService.style(fontSize: 18, color: onSurf),
+        ),
+        iconTheme: IconThemeData(color: onSurf),
         actions: [
           IconButton(
             tooltip: L.t('add_emoji'),
-            icon: const Icon(Icons.add, color: Colors.white70),
+            icon: Icon(Icons.add, color: onSurf.withValues(alpha: 0.75)),
             onPressed: _addCustom,
           ),
         ],
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(12),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 8,
           mainAxisSpacing: 6,
           crossAxisSpacing: 6,

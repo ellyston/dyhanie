@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_controller.dart';
 import '../services/locale_service.dart';
 
@@ -9,16 +10,18 @@ class LanguageScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = LocaleService.code;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bg,
         title: Text(
           L.t('language'),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(fontSize: 18, color: onSurf),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: ListView(
         children: [
@@ -26,16 +29,19 @@ class LanguageScreen extends StatelessWidget {
             ListTile(
               title: Text(
                 LocaleService.languageName(code),
-                style: const TextStyle(color: Colors.white),
+                style: FontService.style(fontSize: 16, color: onSurf),
               ),
               subtitle: code == 'de_ch'
-                  ? const Text(
+                  ? Text(
                       'Schweiz',
-                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                      style: FontService.style(
+                        fontSize: 12,
+                        color: onSurf.withValues(alpha: 0.45),
+                      ),
                     )
                   : null,
               trailing: current == code
-                  ? const Icon(Icons.check, color: Colors.greenAccent)
+                  ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
                   : null,
               onTap: () async {
                 if (code == current) {

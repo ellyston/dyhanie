@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class EnergySavingScreen extends StatefulWidget {
@@ -38,15 +39,18 @@ class _EnergySavingScreenState extends State<EnergySavingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bg,
         title: Text(
           L.t('energy_saving'),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(fontSize: 18, color: onSurf),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: ListView(
         children: [
@@ -54,18 +58,21 @@ class _EnergySavingScreenState extends State<EnergySavingScreen> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
               L.t('energy_hint'),
-              style: const TextStyle(color: Colors.white38, fontSize: 13),
+              style: FontService.style(
+                fontSize: 13,
+                color: onSurf.withValues(alpha: 0.45),
+              ),
             ),
           ),
           SwitchListTile(
-            activeThumbColor: Colors.white,
+            activeThumbColor: onSurf,
             title: Text(
               L.t('less_animations'),
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
             ),
             subtitle: Text(
               L.t('less_animations_sub'),
-              style: const TextStyle(color: Colors.white38),
+              style: FontService.style(color: onSurf.withValues(alpha: 0.45)),
             ),
             value: reduceAnimations,
             onChanged: (v) {
@@ -74,14 +81,14 @@ class _EnergySavingScreenState extends State<EnergySavingScreen> {
             },
           ),
           SwitchListTile(
-            activeThumbColor: Colors.white,
+            activeThumbColor: onSurf,
             title: Text(
               L.t('pause_vpn_bg'),
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
             ),
             subtitle: Text(
               L.t('pause_vpn_bg_sub'),
-              style: const TextStyle(color: Colors.white38),
+              style: FontService.style(color: onSurf.withValues(alpha: 0.45)),
             ),
             value: pauseVpnWhenBackground,
             onChanged: (v) {
@@ -90,14 +97,14 @@ class _EnergySavingScreenState extends State<EnergySavingScreen> {
             },
           ),
           SwitchListTile(
-            activeThumbColor: Colors.white,
+            activeThumbColor: onSurf,
             title: Text(
               L.t('less_presence'),
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
             ),
             subtitle: Text(
               L.t('less_presence_sub'),
-              style: const TextStyle(color: Colors.white38),
+              style: FontService.style(color: onSurf.withValues(alpha: 0.45)),
             ),
             value: lessPresenceUpdates,
             onChanged: (v) {

@@ -407,7 +407,7 @@ class LocaleService {
       'theme_dark': 'Тёмная',
       'theme_auto': 'Авто (по времени суток)',
       'theme_auto_hint': 'Тёмная с 21:00 до 7:00',
-
+      'export slot': 'Экспорт слота',
     },
 
     // ═══════════════════════════════════════
@@ -750,7 +750,7 @@ class LocaleService {
       'theme_dark': 'Dark',
       'theme_auto': 'Auto (by time of day)',
       'theme_auto_hint': 'Dark from 21:00 to 7:00',
-
+      'export slot': 'export slot'
     },
 
     // ═══════════════════════════════════════
@@ -1094,7 +1094,7 @@ class LocaleService {
       'theme_dark': 'Dunkel',
       'theme_auto': 'Auto (nach Tageszeit)',
       'theme_auto_hint': 'Dunkel von 21:00 bis 7:00',
-
+      'export slot': 'Slot exportieren'
     },
   };
 }

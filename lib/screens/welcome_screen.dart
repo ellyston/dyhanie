@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import 'home_screen.dart';
 import 'pin_setup_screen.dart';
@@ -14,29 +15,6 @@ class WelcomeScreen extends StatelessWidget {
 
   static const _logo = 'assets/images/welcome_logo.png';
   static const _bg = 'assets/images/welcome_bg.png';
-
-  // тонкий «премиум» стиль без отдельного ttf
-  static const _titleStyle = TextStyle(
-    color: Colors.white,
-    fontSize: 40,
-    fontWeight: FontWeight.w200,
-    letterSpacing: 8,
-    height: 1.1,
-  );
-
-  static const _subStyle = TextStyle(
-    color: Colors.white60,
-    fontSize: 14,
-    fontWeight: FontWeight.w300,
-    letterSpacing: 2.5,
-  );
-
-  static const _sloganStyle = TextStyle(
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: FontWeight.w500,
-    letterSpacing: 3.2,
-  );
 
   void _onContinue(BuildContext context) {
     if (goHomeOnContinue) {
@@ -54,15 +32,18 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       body: Stack(
         fit: StackFit.expand,
         children: [
           Image.asset(
             _bg,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black),
+            errorBuilder: (_, __, ___) => ColoredBox(color: bg),
           ),
           Container(color: Colors.black.withValues(alpha: 0.45)),
           SafeArea(
@@ -81,9 +62,9 @@ class WelcomeScreen extends StatelessWidget {
                       errorBuilder: (_, __, ___) => Container(
                         width: 160,
                         height: 160,
-                        color: Colors.white12,
+                        color: onSurf.withValues(alpha: 0.08),
                         alignment: Alignment.center,
-                        child: const Icon(Icons.image, color: Colors.white38, size: 48),
+                        child: Icon(Icons.image, color: onSurf.withValues(alpha: 0.4), size: 48),
                       ),
                     ),
                   ),
@@ -91,29 +72,40 @@ class WelcomeScreen extends StatelessWidget {
                   Text(
                     L.t('app_name'),
                     textAlign: TextAlign.center,
-                    style: _titleStyle,
+                    style: FontService.style(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w200,
+                      letterSpacing: 8,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     L.t('ephemeral_talks'),
                     textAlign: TextAlign.center,
-                    style: _subStyle,
+                    style: FontService.style(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w300,
+                      letterSpacing: 2.5,
+                      color: Colors.white70,
+                    ),
                   ),
                   const Spacer(flex: 3),
-                  // слоган без белого «пузыря»
                   TextButton(
                     onPressed: () => _onContinue(context),
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     ),
                     child: Text(
                       L.t('tagline_button'),
                       textAlign: TextAlign.center,
-                      style: _sloganStyle,
+                      style: FontService.style(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 3.2,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 36),

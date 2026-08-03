@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/auto_lock_service.dart';
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class AutoLockSettingsScreen extends StatefulWidget {
@@ -14,7 +15,6 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
   final _svc = AutoLockService();
   bool _loading = true;
 
-  // ползунок: 0 = никогда, 1..120 = минуты
   double _slider = 5;
 
   @override
@@ -57,22 +57,25 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     if (_loading) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: bg,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bg,
         title: Text(
           L.t('auto_lock_title'),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(fontSize: 18, color: onSurf),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -80,38 +83,44 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
           SwitchListTile(
             title: Text(
               L.t('enabled'),
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
             ),
             subtitle: Text(
               _svc.summary,
-              style: const TextStyle(color: Colors.white38),
+              style: FontService.style(color: onSurf.withValues(alpha: 0.45)),
             ),
             value: _svc.enabled,
-            activeColor: Colors.white,
+            activeThumbColor: onSurf,
             onChanged: (v) async {
               setState(() => _svc.enabled = v);
               await _persist();
             },
           ),
-          const Divider(color: Colors.white12),
+          Divider(color: onSurf.withValues(alpha: 0.12)),
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 8),
             child: Text(
               L.t('when_to_lock'),
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
+              style: FontService.style(
+                fontSize: 13,
+                color: onSurf.withValues(alpha: 0.55),
+              ),
             ),
           ),
           RadioListTile<AutoLockMode>(
             value: AutoLockMode.onMinimize,
             groupValue: _svc.mode,
-            activeColor: Colors.white,
+            activeColor: onSurf,
             title: Text(
               L.t('lock_on_minimize'),
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
             ),
             subtitle: Text(
               L.t('on_minimize_sub'),
-              style: const TextStyle(color: Colors.white38, fontSize: 12),
+              style: FontService.style(
+                fontSize: 12,
+                color: onSurf.withValues(alpha: 0.45),
+              ),
             ),
             onChanged: !_svc.enabled
                 ? null
@@ -124,14 +133,17 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
           RadioListTile<AutoLockMode>(
             value: AutoLockMode.afterTimeout,
             groupValue: _svc.mode,
-            activeColor: Colors.white,
+            activeColor: onSurf,
             title: Text(
               L.t('lock_after_time'),
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
             ),
             subtitle: Text(
               L.t('after_timeout_sub'),
-              style: const TextStyle(color: Colors.white38, fontSize: 12),
+              style: FontService.style(
+                fontSize: 12,
+                color: onSurf.withValues(alpha: 0.45),
+              ),
             ),
             onChanged: !_svc.enabled
                 ? null
@@ -145,15 +157,15 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
             const SizedBox(height: 16),
             Text(
               L.tParams('timeout_label', {'label': _timeoutLabel}),
-              style: const TextStyle(color: Colors.white70),
+              style: FontService.style(color: onSurf.withValues(alpha: 0.75)),
             ),
             Slider(
               value: _slider.clamp(0, 120),
               min: 0,
               max: 120,
               divisions: 120,
-              activeColor: Colors.white,
-              inactiveColor: Colors.white24,
+              activeColor: onSurf,
+              inactiveColor: onSurf.withValues(alpha: 0.25),
               label: _timeoutLabel,
               onChanged: (v) {
                 setState(() => _slider = v);
@@ -161,7 +173,7 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
               onChangeEnd: (v) async {
                 setState(() {
                   _slider = v;
-                  _svc.timeoutMinutes = v.round(); // 0 = никогда
+                  _svc.timeoutMinutes = v.round();
                 });
                 await _persist();
               },
@@ -171,15 +183,24 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
               children: [
                 Text(
                   L.t('never'),
-                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                  style: FontService.style(
+                    fontSize: 11,
+                    color: onSurf.withValues(alpha: 0.4),
+                  ),
                 ),
                 Text(
                   L.t('min_1_short'),
-                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                  style: FontService.style(
+                    fontSize: 11,
+                    color: onSurf.withValues(alpha: 0.4),
+                  ),
                 ),
                 Text(
                   L.t('hours_2_short'),
-                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                  style: FontService.style(
+                    fontSize: 11,
+                    color: onSurf.withValues(alpha: 0.4),
+                  ),
                 ),
               ],
             ),
@@ -187,7 +208,10 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
           const SizedBox(height: 24),
           Text(
             L.t('pin_unlock_hint'),
-            style: const TextStyle(color: Colors.white30, fontSize: 12),
+            style: FontService.style(
+              fontSize: 12,
+              color: onSurf.withValues(alpha: 0.35),
+            ),
           ),
         ],
       ),

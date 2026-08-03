@@ -1110,12 +1110,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final list = _visibleMessages;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       body: Container(
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: bg,
           image: backgroundBytes != null
               ? DecorationImage(
                   image: MemoryImage(backgroundBytes!),
@@ -1130,6 +1132,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: ChatAppBar(
+            // ... все параметры как были — не меняй
             showSearch: showSearch,
             searchController: _searchCtrl,
             isDirect: _looksLikeDirectDialog(widget.roomCode),
@@ -1177,40 +1180,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   width: double.infinity,
                   color: callInProgress
                       ? Colors.green.withValues(alpha: 0.25)
-                      : Colors.white10,
+                      : onSurf.withValues(alpha: 0.08),
                   padding: const EdgeInsets.all(8),
                   child: Text(
                     callStatusBanner,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: onSurf),
                   ),
                 ),
               if (pinned != null)
                 Container(
                   width: double.infinity,
-                  color: Colors.white10,
+                  color: onSurf.withValues(alpha: 0.08),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(
                     children: [
-                      const Icon(Icons.push_pin, color: Colors.white54, size: 16),
+                      Icon(Icons.push_pin,
+                          color: onSurf.withValues(alpha: 0.55), size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           '${pinned!['username']}: ${pinned!['text']}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: onSurf.withValues(alpha: 0.75),
                             fontSize: 13,
                           ),
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.close,
                           size: 16,
-                          color: Colors.white38,
+                          color: onSurf.withValues(alpha: 0.4),
                         ),
                         onPressed: () => _db
                             .child('rooms')
@@ -1224,7 +1228,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
               if (saveRequestIncoming)
                 Container(
-                  color: Colors.white10,
+                  color: onSurf.withValues(alpha: 0.08),
                   padding: const EdgeInsets.all(10),
                   child: Row(
                     children: [
@@ -1234,7 +1238,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             'save_chat_offer',
                             {'name': '$saveRequestedBy'},
                           ),
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: onSurf),
                         ),
                       ),
                       TextButton(
@@ -1245,7 +1249,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             .update({'saveRequestedBy': null}),
                         child: Text(
                           L.t('no'),
-                          style: const TextStyle(color: Colors.white54),
+                          style: TextStyle(
+                            color: onSurf.withValues(alpha: 0.55),
+                          ),
                         ),
                       ),
                       TextButton(
@@ -1293,7 +1299,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       '@$typingUser ${L.t('typing')}',
-                      style: const TextStyle(color: Colors.white38, fontSize: 13),
+                      style: TextStyle(
+                        color: onSurf.withValues(alpha: 0.4),
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),

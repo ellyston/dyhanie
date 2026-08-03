@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
@@ -7,15 +8,18 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bg,
         title: Text(
           L.t('privacy_policy'),
-          style: const TextStyle(color: Colors.white, fontSize: 18),
+          style: FontService.style(fontSize: 18, color: onSurf),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -43,14 +47,15 @@ class _H extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     return Padding(
       padding: const EdgeInsets.only(top: 20, bottom: 8),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.white,
+        style: FontService.style(
           fontSize: 16,
           fontWeight: FontWeight.w600,
+          color: onSurf,
         ),
       ),
     );
@@ -63,9 +68,14 @@ class _P extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     return Text(
       text,
-      style: const TextStyle(color: Colors.white70, height: 1.45, fontSize: 14),
+      style: FontService.style(
+        fontSize: 14,
+        height: 1.45,
+        color: onSurf.withValues(alpha: 0.7),
+      ),
     );
   }
 }

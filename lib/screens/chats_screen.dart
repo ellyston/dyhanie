@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/dialog_signal_service.dart';
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/outbox_service.dart';
 import 'chat_screen.dart';
@@ -145,45 +146,57 @@ class _ChatsScreenState extends State<ChatsScreen> {
   @override
   Widget build(BuildContext context) {
     final list = _sorted;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text(L.t('chats'), style: const TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: bg,
+        title: Text(
+          L.t('chats'),
+          style: FontService.style(fontSize: 18, color: onSurf),
+        ),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: list.isEmpty
           ? Center(
               child: Text(
                 L.t('chats_empty'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white38),
+                style: FontService.style(
+                  color: onSurf.withValues(alpha: 0.4),
+                ),
               ),
             )
           : ListView.separated(
               itemCount: list.length,
-              separatorBuilder: (_, __) =>
-                  Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
+              separatorBuilder: (_, __) => Divider(
+                color: onSurf.withValues(alpha: 0.06),
+                height: 1,
+              ),
               itemBuilder: (context, i) {
                 final item = list[i];
                 return ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: Colors.white12,
+                    backgroundColor: onSurf.withValues(alpha: 0.1),
                     child: Text(
                       item.otherUser.isNotEmpty
                           ? item.otherUser[0].toUpperCase()
                           : '?',
-                      style: const TextStyle(color: Colors.white),
+                      style: FontService.style(color: onSurf),
                     ),
                   ),
                   title: Text(
                     '@${item.otherUser}',
-                    style: const TextStyle(color: Colors.white),
+                    style: FontService.style(color: onSurf),
                   ),
                   subtitle: Text(
                     item.subtitle,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    style: FontService.style(
+                      color: onSurf.withValues(alpha: 0.55),
+                      fontSize: 12,
+                    ),
                   ),
                   trailing: item.badge > 0
                       ? Container(
@@ -206,9 +219,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           ),
                         )
                       : (item.hasOutbox
-                          ? const Icon(
+                          ? Icon(
                               Icons.schedule,
-                              color: Colors.white38,
+                              color: onSurf.withValues(alpha: 0.4),
                               size: 18,
                             )
                           : null),

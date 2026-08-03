@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class VpnQrScanScreen extends StatefulWidget {
@@ -35,12 +36,18 @@ class _VpnQrScanScreenState extends State<VpnQrScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text(L.t('vpn_qr_title'), style: const TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: bg,
+        title: Text(
+          L.t('vpn_qr_title'),
+          style: FontService.style(fontSize: 18, color: onSurf),
+        ),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: Stack(
         children: [
@@ -57,7 +64,10 @@ class _VpnQrScanScreenState extends State<VpnQrScanScreen> {
               child: Text(
                 L.t('vpn_qr_hint'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                style: FontService.style(
+                  fontSize: 13,
+                  color: Colors.white70,
+                ),
               ),
             ),
           ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class AskQuestionScreen extends StatefulWidget {
@@ -62,15 +63,18 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bg,
         title: Text(
           L.t('ask_question'),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(fontSize: 18, color: onSurf),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -79,18 +83,21 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
           children: [
             Text(
               L.t('ask_hint'),
-              style: const TextStyle(color: Colors.white54, fontSize: 14),
+              style: FontService.style(
+                fontSize: 14,
+                color: onSurf.withValues(alpha: 0.55),
+              ),
             ),
             const SizedBox(height: 20),
             TextField(
               controller: _controller,
               maxLines: 8,
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
               decoration: InputDecoration(
                 hintText: L.t('ask_placeholder'),
-                hintStyle: const TextStyle(color: Colors.white30),
+                hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.06),
+                fillColor: onSurf.withValues(alpha: 0.06),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -102,22 +109,25 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
               height: 52,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
+                  backgroundColor: onSurf,
+                  foregroundColor: bg,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 onPressed: _sending ? null : _send,
                 child: _sending
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 22,
                         height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: bg,
+                        ),
                       )
                     : Text(
                         L.t('send'),
-                        style: const TextStyle(fontSize: 16),
+                        style: FontService.style(fontSize: 16, color: bg),
                       ),
               ),
             ),

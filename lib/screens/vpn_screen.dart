@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/vpn_models.dart';
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/vpn/vpn_engine.dart';
 import '../services/vpn/vpn_engine_factory.dart';
@@ -237,10 +238,13 @@ class _VpnScreenState extends State<VpnScreen> {
 
   void _showImport() {
     final ctrl = TextEditingController();
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: scheme.surfaceContainerHigh,
       builder: (ctx) {
         return Padding(
           padding: EdgeInsets.only(
@@ -255,23 +259,26 @@ class _VpnScreenState extends State<VpnScreen> {
             children: [
               Text(
                 L.t('vpn_import'),
-                style: const TextStyle(color: Colors.white, fontSize: 18),
+                style: FontService.style(fontSize: 18, color: onSurf),
               ),
               const SizedBox(height: 8),
               Text(
                 L.t('vpn_import_hint'),
-                style: const TextStyle(color: Colors.white54, fontSize: 13),
+                style: FontService.style(
+                  fontSize: 13,
+                  color: onSurf.withValues(alpha: 0.55),
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: ctrl,
                 maxLines: 5,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
+                style: FontService.style(fontSize: 13, color: onSurf),
                 decoration: InputDecoration(
                   hintText: L.t('vpn_import_placeholder'),
-                  hintStyle: const TextStyle(color: Colors.white30),
+                  hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
                   filled: true,
-                  fillColor: Colors.white10,
+                  fillColor: onSurf.withValues(alpha: 0.08),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -371,18 +378,21 @@ class _VpnScreenState extends State<VpnScreen> {
       selected.add(all[i].id);
     }
 
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     return showDialog<List<VpnServer>>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setD) {
             return AlertDialog(
-              backgroundColor: const Color(0xFF1A1A1A),
+              backgroundColor: scheme.surfaceContainerHigh,
               title: Text(
                 L.tParams('vpn_pick_servers', {
                   'n': '${VpnStorageService.maxServersPerSub}',
                 }),
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+                style: FontService.style(fontSize: 16, color: onSurf),
               ),
               content: SizedBox(
                 width: double.maxFinite,
@@ -396,12 +406,14 @@ class _VpnScreenState extends State<VpnScreen> {
                       value: on,
                       title: Text(
                         s.name,
-                        style: const TextStyle(color: Colors.white),
+                        style: FontService.style(color: onSurf),
                       ),
                       subtitle: Text(
                         s.protocolLabel,
-                        style:
-                            const TextStyle(color: Colors.white54, fontSize: 12),
+                        style: FontService.style(
+                          color: onSurf.withValues(alpha: 0.55),
+                          fontSize: 12,
+                        ),
                       ),
                       onChanged: (v) {
                         setD(() {
@@ -424,7 +436,9 @@ class _VpnScreenState extends State<VpnScreen> {
                   onPressed: () => Navigator.pop(ctx),
                   child: Text(
                     L.t('cancel'),
-                    style: const TextStyle(color: Colors.white54),
+                    style: FontService.style(
+                      color: onSurf.withValues(alpha: 0.55),
+                    ),
                   ),
                 ),
                 TextButton(
@@ -435,7 +449,7 @@ class _VpnScreenState extends State<VpnScreen> {
                   },
                   child: Text(
                     L.t('ok'),
-                    style: const TextStyle(color: Colors.white),
+                    style: FontService.style(color: onSurf),
                   ),
                 ),
               ],
@@ -447,20 +461,25 @@ class _VpnScreenState extends State<VpnScreen> {
   }
 
   Future<void> _deleteSlot(VpnSlot slot) async {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: scheme.surfaceContainerHigh,
         title: Text(
           L.t('vpn_delete_slot'),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(color: onSurf),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               L.t('no'),
-              style: const TextStyle(color: Colors.white54),
+              style: FontService.style(
+                color: onSurf.withValues(alpha: 0.55),
+              ),
             ),
           ),
           TextButton(
@@ -528,9 +547,12 @@ class _VpnScreenState extends State<VpnScreen> {
   }
 
   void _openLogs() {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: scheme.surfaceContainerHigh,
       isScrollControlled: true,
       builder: (ctx) {
         final items = _log.entries;
@@ -541,7 +563,7 @@ class _VpnScreenState extends State<VpnScreen> {
               ListTile(
                 title: Text(
                   L.t('vpn_logs'),
-                  style: const TextStyle(color: Colors.white),
+                  style: FontService.style(color: onSurf),
                 ),
                 trailing: TextButton(
                   onPressed: () {
@@ -552,13 +574,15 @@ class _VpnScreenState extends State<VpnScreen> {
                   child: Text(L.t('clear')),
                 ),
               ),
-              const Divider(color: Colors.white12, height: 1),
+              Divider(color: onSurf.withValues(alpha: 0.12), height: 1),
               Expanded(
                 child: items.isEmpty
                     ? Center(
                         child: Text(
                           L.t('vpn_empty_logs'),
-                          style: const TextStyle(color: Colors.white38),
+                          style: FontService.style(
+                            color: onSurf.withValues(alpha: 0.4),
+                          ),
                         ),
                       )
                     : ListView.builder(
@@ -569,15 +593,15 @@ class _VpnScreenState extends State<VpnScreen> {
                             dense: true,
                             title: Text(
                               '${e.timeLabel}  ${e.code}',
-                              style: const TextStyle(
-                                color: Colors.white70,
+                              style: FontService.style(
+                                color: onSurf.withValues(alpha: 0.75),
                                 fontSize: 12,
                               ),
                             ),
                             subtitle: Text(
                               e.message,
-                              style: const TextStyle(
-                                color: Colors.white54,
+                              style: FontService.style(
+                                color: onSurf.withValues(alpha: 0.55),
                                 fontSize: 12,
                               ),
                             ),
@@ -634,38 +658,46 @@ class _VpnScreenState extends State<VpnScreen> {
   Widget build(BuildContext context) {
     final active = _engine.activeServer;
     final connected = _engine.state == VpnConnState.connected;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text(L.t('vpn_title'), style: const TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: bg,
+        title: Text(
+          L.t('vpn_title'),
+          style: FontService.style(fontSize: 18, color: onSurf),
+        ),
+        iconTheme: IconThemeData(color: onSurf),
         actions: [
           IconButton(
             tooltip: L.t('vpn_tooltip_logs'),
             onPressed: _openLogs,
-            icon: const Icon(Icons.article_outlined, color: Colors.white70),
+            icon: Icon(Icons.article_outlined,
+                color: onSurf.withValues(alpha: 0.75)),
           ),
           IconButton(
             tooltip: L.t('vpn_tooltip_refresh_all'),
             onPressed: busy ? null : _refreshAll,
-            icon: const Icon(Icons.sync, color: Colors.white70),
+            icon: Icon(Icons.sync, color: onSurf.withValues(alpha: 0.75)),
           ),
           IconButton(
             tooltip: L.t('vpn_tooltip_ping'),
             onPressed: busy ? null : _pingAll,
-            icon: const Icon(Icons.network_check, color: Colors.white70),
+            icon: Icon(Icons.network_check,
+                color: onSurf.withValues(alpha: 0.75)),
           ),
           IconButton(
             tooltip: L.t('vpn_tooltip_qr'),
             onPressed: busy ? null : _importFromQr,
-            icon: const Icon(Icons.qr_code_scanner, color: Colors.white70),
+            icon: Icon(Icons.qr_code_scanner,
+                color: onSurf.withValues(alpha: 0.75)),
           ),
           IconButton(
             tooltip: L.t('vpn_tooltip_import'),
             onPressed: busy ? null : _showImport,
-            icon: const Icon(Icons.add, color: Colors.white70),
+            icon: Icon(Icons.add, color: onSurf.withValues(alpha: 0.75)),
           ),
         ],
       ),
@@ -684,16 +716,20 @@ class _VpnScreenState extends State<VpnScreen> {
                       shape: BoxShape.circle,
                       color: connected
                           ? Colors.greenAccent.withValues(alpha: 0.2)
-                          : Colors.white.withValues(alpha: 0.08),
+                          : onSurf.withValues(alpha: 0.08),
                       border: Border.all(
-                        color: connected ? Colors.greenAccent : Colors.white24,
+                        color: connected
+                            ? Colors.greenAccent
+                            : onSurf.withValues(alpha: 0.25),
                         width: 2,
                       ),
                     ),
                     child: Icon(
                       Icons.power_settings_new,
                       size: 42,
-                      color: connected ? Colors.greenAccent : Colors.white54,
+                      color: connected
+                          ? Colors.greenAccent
+                          : onSurf.withValues(alpha: 0.55),
                     ),
                   ),
                 ),
@@ -701,16 +737,20 @@ class _VpnScreenState extends State<VpnScreen> {
                 Text(
                   _statusText,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  style: FontService.style(
+                    fontSize: 14,
+                    color: onSurf.withValues(alpha: 0.75),
+                  ),
                 ),
                 if (!_engine.supportsTunnel) ...[
                   const SizedBox(height: 6),
                   Text(
-                    kIsWeb
-                        ? L.t('vpn_web_only')
-                        : L.t('vpn_tunnel_later'),
+                    kIsWeb ? L.t('vpn_web_only') : L.t('vpn_tunnel_later'),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white38, fontSize: 11),
+                    style: FontService.style(
+                      fontSize: 11,
+                      color: onSurf.withValues(alpha: 0.4),
+                    ),
                   ),
                 ],
                 if (active != null && connected) ...[
@@ -720,7 +760,7 @@ class _VpnScreenState extends State<VpnScreen> {
               ],
             ),
           ),
-          const Divider(color: Colors.white12),
+          Divider(color: onSurf.withValues(alpha: 0.12)),
           Expanded(
             child: slots.isEmpty
                 ? Center(
@@ -729,7 +769,10 @@ class _VpnScreenState extends State<VpnScreen> {
                       child: Text(
                         L.t('vpn_empty'),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white38, height: 1.4),
+                        style: FontService.style(
+                          height: 1.4,
+                          color: onSurf.withValues(alpha: 0.4),
+                        ),
                       ),
                     ),
                   )
@@ -742,8 +785,9 @@ class _VpnScreenState extends State<VpnScreen> {
                         slot: slot,
                         highlightServerId: _highlightServerId,
                         onDelete: () => _deleteSlot(slot),
-                        onRefresh:
-                            slot.isSubscription ? () => _refreshSub(slot) : null,
+                        onRefresh: slot.isSubscription
+                            ? () => _refreshSub(slot)
+                            : null,
                         onCopyServer: _copyServer,
                         onExportSlot: () => _exportSlot(slot),
                         onSelectServer: (serverId) async {
@@ -817,6 +861,7 @@ class _ActiveBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -830,7 +875,7 @@ class _ActiveBubble extends StatelessWidget {
         children: [
           Text(
             server.name,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
+            style: FontService.style(fontSize: 16, color: onSurf),
           ),
           const SizedBox(height: 4),
           Text(
@@ -840,13 +885,19 @@ class _ActiveBubble extends StatelessWidget {
               server.protocolLabel,
               if (server.lastPingMs != null) '${server.lastPingMs} ms',
             ].join(' · '),
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+            style: FontService.style(
+              fontSize: 12,
+              color: onSurf.withValues(alpha: 0.55),
+            ),
           ),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: onPing,
-              child: Text(L.t('vpn_ping'), style: const TextStyle(fontSize: 12)),
+              child: Text(
+                L.t('vpn_ping'),
+                style: FontService.style(fontSize: 12, color: onSurf),
+              ),
             ),
           ),
         ],
@@ -880,6 +931,9 @@ class _SlotBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+    final menuBg = Theme.of(context).colorScheme.surfaceContainerHigh;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Column(
@@ -890,23 +944,24 @@ class _SlotBlock extends StatelessWidget {
               Expanded(
                 child: Text(
                   slot.name,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: FontService.style(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
+                    color: onSurf,
                   ),
                 ),
               ),
               if (onRefresh != null)
                 IconButton(
-                  icon:
-                      const Icon(Icons.refresh, color: Colors.white54, size: 20),
+                  icon: Icon(Icons.refresh,
+                      color: onSurf.withValues(alpha: 0.55), size: 20),
                   onPressed: onRefresh,
                   tooltip: L.t('vpn_tooltip_refresh_now'),
                 ),
               PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: Colors.white54),
-                color: const Color(0xFF1A1A1A),
+                icon: Icon(Icons.more_vert,
+                    color: onSurf.withValues(alpha: 0.55)),
+                color: menuBg,
                 onSelected: (v) {
                   if (v == 'del') onDelete();
                   if (v == 'export') onExportSlot();
@@ -924,23 +979,21 @@ class _SlotBlock extends StatelessWidget {
                     value: 'auto',
                     child: Text(
                       '${L.t('vpn_auto')}${slot.selectMode == ServerSelectMode.auto ? ' ✓' : ''}',
-                      style: const TextStyle(color: Colors.white),
+                      style: FontService.style(color: onSurf),
                     ),
                   ),
                   PopupMenuItem(
                     value: 'manual',
                     child: Text(
                       '${L.t('vpn_manual_select')}${slot.selectMode == ServerSelectMode.manual ? ' ✓' : ''}',
-                      style: const TextStyle(color: Colors.white),
+                      style: FontService.style(color: onSurf),
                     ),
                   ),
                   PopupMenuItem(
                     value: 'export',
                     child: Text(
-                      L.t('vpn_slot_copied').contains('Слот')
-                          ? 'Export'
-                          : L.t('vpn_slot_copied'),
-                      style: const TextStyle(color: Colors.white),
+                      L.t('vpn_slot_copied'),
+                      style: FontService.style(color: onSurf),
                     ),
                   ),
                   if (slot.isSubscription) ...[
@@ -949,14 +1002,14 @@ class _SlotBlock extends StatelessWidget {
                       value: 'ref_off',
                       child: Text(
                         '${L.t('vpn_auto_off')}${slot.refreshInterval == SubRefreshInterval.off ? ' ✓' : ''}',
-                        style: const TextStyle(color: Colors.white),
+                        style: FontService.style(color: onSurf),
                       ),
                     ),
                     PopupMenuItem(
                       value: 'ref_6',
                       child: Text(
                         '${L.t('vpn_auto_on')}${slot.refreshInterval == SubRefreshInterval.hours6 ? ' ✓' : ''}',
-                        style: const TextStyle(color: Colors.white),
+                        style: FontService.style(color: onSurf),
                       ),
                     ),
                   ],
@@ -976,7 +1029,10 @@ class _SlotBlock extends StatelessWidget {
             slot.isSubscription
                 ? '${L.t('vpn_subscription_n').replaceAll('{n}', '').trim()} · ${slot.servers.length} · ${slot.selectMode == ServerSelectMode.auto ? L.t('vpn_auto') : L.t('vpn_manual_select')}'
                 : '${L.t('vpn_config_n').replaceAll('{n}', '').trim()} · ${slot.servers.length}',
-            style: const TextStyle(color: Colors.white38, fontSize: 12),
+            style: FontService.style(
+              fontSize: 12,
+              color: onSurf.withValues(alpha: 0.4),
+            ),
           ),
           const SizedBox(height: 8),
           ...slot.servers.map((s) {
@@ -992,7 +1048,7 @@ class _SlotBlock extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isActive
                       ? Colors.greenAccent.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.05),
+                      : onSurf.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isActive
@@ -1008,7 +1064,7 @@ class _SlotBlock extends StatelessWidget {
                         children: [
                           Text(
                             s.name,
-                            style: const TextStyle(color: Colors.white),
+                            style: FontService.style(color: onSurf),
                           ),
                           Text(
                             [
@@ -1016,8 +1072,8 @@ class _SlotBlock extends StatelessWidget {
                               if (s.country != null) s.country!,
                               if (s.lastPingMs != null) '${s.lastPingMs} ms',
                             ].join(' · '),
-                            style: const TextStyle(
-                              color: Colors.white54,
+                            style: FontService.style(
+                              color: onSurf.withValues(alpha: 0.55),
                               fontSize: 11,
                             ),
                           ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class ChatMessageList extends StatelessWidget {
@@ -35,22 +36,27 @@ class ChatMessageList extends StatelessWidget {
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
-  Widget _statusIcon(Map msg) {
+  Widget _statusIcon(Map msg, Color muted) {
     if (msg['username'] != myUsername) return const SizedBox.shrink();
     final ts = msg['timestamp'] as int? ?? 0;
     final read = otherLastRead != null && otherLastRead! >= ts;
     return Icon(
       read ? Icons.done_all : Icons.done,
       size: 14,
-      color: read ? Colors.lightBlueAccent : Colors.white38,
+      color: read ? Colors.lightBlueAccent : muted,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     if (messages.isEmpty) {
       return Center(
-        child: Text(L.t('quiet_chat'), style: TextStyle(color: Colors.white38)),
+        child: Text(
+          L.t('quiet_chat'),
+          style: FontService.style(color: onSurf.withValues(alpha: 0.4)),
+        ),
       );
     }
 
@@ -74,14 +80,15 @@ class ChatMessageList extends StatelessWidget {
             onLongPress: () => onLongPress(msg),
             child: Container(
               margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.75,
               ),
               decoration: BoxDecoration(
                 color: isMe
-                    ? Colors.white.withValues(alpha: 0.18)
-                    : Colors.white.withValues(alpha: 0.10),
+                    ? onSurf.withValues(alpha: 0.18)
+                    : onSurf.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(18),
                   topRight: const Radius.circular(18),
@@ -95,8 +102,8 @@ class ChatMessageList extends StatelessWidget {
                   if (!isMe)
                     Text(
                       '@${msg['username']}',
-                      style: TextStyle(
-                        color: Colors.white54,
+                      style: FontService.style(
+                        color: onSurf.withValues(alpha: 0.55),
                         fontSize: fontSize - 3,
                       ),
                     ),
@@ -106,17 +113,23 @@ class ChatMessageList extends StatelessWidget {
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: onSurf.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
-                        border: const Border(
-                          left: BorderSide(color: Colors.white38, width: 2),
+                        border: Border(
+                          left: BorderSide(
+                            color: onSurf.withValues(alpha: 0.4),
+                            width: 2,
+                          ),
                         ),
                       ),
                       child: Text(
                         '${msg['replyUser']}: ${msg['replyText']}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        style: FontService.style(
+                          color: onSurf.withValues(alpha: 0.55),
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   if (img != null)
@@ -128,15 +141,20 @@ class ChatMessageList extends StatelessWidget {
                           base64Decode(img),
                           fit: BoxFit.cover,
                           width: 200,
-                          errorBuilder: (_, __, ___) =>
-                              const Text('🖼', style: TextStyle(fontSize: 40)),
+                          errorBuilder: (_, __, ___) => Text(
+                            'Image',
+                            style: FontService.style(fontSize: 40, color: onSurf),
+                          ),
                         ),
                       ),
                     ),
                   if (text.isNotEmpty)
                     Text(
                       text,
-                      style: TextStyle(color: Colors.white, fontSize: fontSize),
+                      style: FontService.style(
+                        color: onSurf,
+                        fontSize: fontSize,
+                      ),
                     ),
                   const SizedBox(height: 4),
                   Row(
@@ -144,29 +162,38 @@ class ChatMessageList extends StatelessWidget {
                     children: [
                       Text(
                         isP2P ? L.t('p2p_connected') : L.t('via_server'),
-                        style: TextStyle(
+                        style: FontService.style(
                           color: isP2P
                               ? Colors.greenAccent.withValues(alpha: 0.8)
-                              : Colors.white30,
+                              : onSurf.withValues(alpha: 0.3),
                           fontSize: 10,
                         ),
                       ),
                       Text(
                         ' · ${_fmtTime(ts)}',
-                        style: const TextStyle(color: Colors.white30, fontSize: 10),
+                        style: FontService.style(
+                          color: onSurf.withValues(alpha: 0.3),
+                          fontSize: 10,
+                        ),
                       ),
                       if (rem != null && !isSavedChat && selectedTime > 0)
                         Text(
                           ' · ${rem}s',
-                          style: const TextStyle(color: Colors.white38, fontSize: 10),
+                          style: FontService.style(
+                            color: onSurf.withValues(alpha: 0.4),
+                            fontSize: 10,
+                          ),
                         ),
                       if (((msg['ttl'] as int?) ?? 0) == 0)
-                        const Text(
+                        Text(
                           ' · ∞',
-                          style: TextStyle(color: Colors.white30, fontSize: 10),
+                          style: FontService.style(
+                            color: onSurf.withValues(alpha: 0.3),
+                            fontSize: 10,
+                          ),
                         ),
                       const SizedBox(width: 4),
-                      _statusIcon(msg),
+                      _statusIcon(msg, onSurf.withValues(alpha: 0.4)),
                     ],
                   ),
                 ],

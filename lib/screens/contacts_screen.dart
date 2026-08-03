@@ -11,6 +11,7 @@ import '../services/locale_service.dart';
 import '../services/outbox_service.dart';
 import 'chat_screen.dart';
 import 'chats_screen.dart';
+import '../services/font_service.dart';
 
 class ContactsScreen extends StatefulWidget {
   final String myUsername;
@@ -404,15 +405,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bg,
         title: Text(
           L.t('contacts_title'),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(fontSize: 18, color: onSurf),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: Column(
         children: [
@@ -428,13 +432,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   L.tParams('incoming_messages', {
                     'n': '$incomingMessagesCount',
                   }),
-                  style: const TextStyle(color: Colors.white),
+                  style: FontService.style(color: onSurf),
                 ),
                 subtitle: Text(
                   L.t('open_chat_to_read'),
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  style: FontService.style(
+                    fontSize: 12,
+                    color: onSurf.withValues(alpha: 0.55),
+                  ),
                 ),
-                trailing: const Icon(Icons.chevron_right, color: Colors.white54),
+                trailing: Icon(Icons.chevron_right,
+                    color: onSurf.withValues(alpha: 0.55)),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -457,7 +465,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ),
                 title: Text(
                   L.tParams('invite_from', {'name': from}),
-                  style: const TextStyle(color: Colors.white),
+                  style: FontService.style(color: onSurf),
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -466,7 +474,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       onPressed: () => _decline(from),
                       child: Text(
                         L.t('no'),
-                        style: const TextStyle(color: Colors.white54),
+                        style: FontService.style(
+                          color: onSurf.withValues(alpha: 0.55),
+                        ),
                       ),
                     ),
                     TextButton(
@@ -484,12 +494,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ...outgoingInvites.map((inv) {
             final to = inv['to']?.toString() ?? '';
             return Material(
-              color: Colors.white.withValues(alpha: 0.04),
+              color: onSurf.withValues(alpha: 0.04),
               child: ListTile(
-                leading: const Icon(Icons.hourglass_top, color: Colors.white54),
+                leading: Icon(Icons.hourglass_top,
+                    color: onSurf.withValues(alpha: 0.55)),
                 title: Text(
                   L.tParams('waiting_for', {'name': to}),
-                  style: const TextStyle(color: Colors.white70),
+                  style: FontService.style(
+                    color: onSurf.withValues(alpha: 0.75),
+                  ),
                 ),
                 trailing: TextButton(
                   onPressed: () => _cancelOutgoing(to),
@@ -505,15 +518,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
             child: TextField(
               controller: _globalSearch,
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')),
               ],
               decoration: InputDecoration(
                 hintText: L.t('global_search'),
-                hintStyle: const TextStyle(color: Colors.white30),
-                prefixIcon:
-                    const Icon(Icons.travel_explore, color: Colors.white38),
+                hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
+                prefixIcon: Icon(Icons.travel_explore,
+                    color: onSurf.withValues(alpha: 0.4)),
                 suffixIcon: globalSending
                     ? const Padding(
                         padding: EdgeInsets.all(12),
@@ -524,11 +537,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         ),
                       )
                     : IconButton(
-                        icon: const Icon(Icons.send, color: Colors.white70),
+                        icon: Icon(Icons.send,
+                            color: onSurf.withValues(alpha: 0.75)),
                         onPressed: _globalSearchSubmit,
                       ),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.06),
+                fillColor: onSurf.withValues(alpha: 0.06),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -541,13 +555,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
             child: TextField(
               controller: _localSearch,
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
               decoration: InputDecoration(
                 hintText: L.t('local_search'),
-                hintStyle: const TextStyle(color: Colors.white30),
-                prefixIcon: const Icon(Icons.search, color: Colors.white38),
+                hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
+                prefixIcon:
+                    Icon(Icons.search, color: onSurf.withValues(alpha: 0.4)),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.06),
+                fillColor: onSurf.withValues(alpha: 0.06),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -560,7 +575,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ? Center(
                     child: Text(
                       L.t('no_contacts'),
-                      style: const TextStyle(color: Colors.white38),
+                      style: FontService.style(
+                        color: onSurf.withValues(alpha: 0.4),
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -581,29 +598,29 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         onDismissed: (_) => _remove(name),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: Colors.white12,
+                            backgroundColor: onSurf.withValues(alpha: 0.1),
                             child: Text(
                               name[0].toUpperCase(),
-                              style: const TextStyle(color: Colors.white),
+                              style: FontService.style(color: onSurf),
                             ),
                           ),
                           title: Text(
                             '@$name',
-                            style: const TextStyle(color: Colors.white),
+                            style: FontService.style(color: onSurf),
                           ),
                           subtitle: note.isEmpty
                               ? null
                               : Text(
                                   note,
-                                  style: const TextStyle(
-                                    color: Colors.white38,
+                                  style: FontService.style(
                                     fontSize: 12,
+                                    color: onSurf.withValues(alpha: 0.4),
                                   ),
                                 ),
                           trailing: IconButton(
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.more_vert,
-                              color: Colors.white54,
+                              color: onSurf.withValues(alpha: 0.55),
                             ),
                             onPressed: () => _contactActions(name),
                           ),
@@ -618,22 +635,28 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ExpansionTile(
               title: Text(
                 '${L.t('blacklist')} (${blocked.length})',
-                style: const TextStyle(color: Colors.white54),
+                style: FontService.style(
+                  color: onSurf.withValues(alpha: 0.55),
+                ),
               ),
-              collapsedIconColor: Colors.white54,
-              iconColor: Colors.white70,
+              collapsedIconColor: onSurf.withValues(alpha: 0.55),
+              iconColor: onSurf.withValues(alpha: 0.75),
               children: blocked
                   .map(
                     (b) => ListTile(
                       title: Text(
                         '@$b',
-                        style: const TextStyle(color: Colors.white70),
+                        style: FontService.style(
+                          color: onSurf.withValues(alpha: 0.75),
+                        ),
                       ),
                       trailing: TextButton(
                         onPressed: () => _unblock(b),
                         child: Text(
                           L.t('unblock_short'),
-                          style: const TextStyle(color: Colors.white54),
+                          style: FontService.style(
+                            color: onSurf.withValues(alpha: 0.55),
+                          ),
                         ),
                       ),
                     ),

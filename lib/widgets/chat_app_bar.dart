@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
@@ -79,6 +80,7 @@ class _ChatAppBarState extends State<ChatAppBar>
   }
 
   Widget _avatar(Uint8List? bytes, String? name, {bool highlight = false}) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     final letter =
         (name != null && name.isNotEmpty) ? name[0].toUpperCase() : '?';
     return Container(
@@ -89,7 +91,7 @@ class _ChatAppBarState extends State<ChatAppBar>
         border: Border.all(
           color: highlight
               ? Colors.greenAccent.withValues(alpha: 0.7)
-              : Colors.white24,
+              : onSurf.withValues(alpha: 0.25),
           width: 1.5,
         ),
       ),
@@ -97,11 +99,11 @@ class _ChatAppBarState extends State<ChatAppBar>
         child: bytes != null && bytes.isNotEmpty
             ? Image.memory(bytes, fit: BoxFit.cover)
             : Container(
-                color: Colors.white12,
+                color: onSurf.withValues(alpha: 0.1),
                 alignment: Alignment.center,
                 child: Text(
                   letter,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: FontService.style(fontSize: 14, color: onSurf),
                 ),
               ),
       ),
@@ -110,22 +112,26 @@ class _ChatAppBarState extends State<ChatAppBar>
 
   @override
   Widget build(BuildContext context) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+    final surface = Theme.of(context).colorScheme.surface;
+
     return AppBar(
-      backgroundColor: Colors.black54,
+      backgroundColor: surface.withValues(alpha: 0.55),
+      foregroundColor: onSurf,
       toolbarHeight: 96,
       leadingWidth: 48,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
+        icon: Icon(Icons.arrow_back, color: onSurf),
         onPressed: widget.onBack,
       ),
       title: widget.showSearch
           ? TextField(
               controller: widget.searchController,
               autofocus: true,
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
               decoration: InputDecoration(
                 hintText: L.t('search'),
-                hintStyle: const TextStyle(color: Colors.white38),
+                hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.4)),
                 border: InputBorder.none,
               ),
               onChanged: widget.onSearchChanged,
@@ -143,7 +149,10 @@ class _ChatAppBarState extends State<ChatAppBar>
                           animation: _air,
                           builder: (_, __) {
                             return CustomPaint(
-                              painter: _BreathAirPainter(progress: _air.value),
+                              painter: _BreathAirPainter(
+                                progress: _air.value,
+                                color: onSurf,
+                              ),
                               child: const SizedBox.expand(),
                             );
                           },
@@ -160,7 +169,7 @@ class _ChatAppBarState extends State<ChatAppBar>
                 const SizedBox(height: 2),
                 Text(
                   widget.isDirect ? L.t('dialog') : L.t('app_name'),
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  style: FontService.style(fontSize: 15, color: onSurf),
                 ),
                 Text(
                   widget.otherUser != null
@@ -168,7 +177,10 @@ class _ChatAppBarState extends State<ChatAppBar>
                       : (widget.isDirect
                           ? L.t('waiting_peer')
                           : '${L.t('room_code')}: ${widget.roomCode}'),
-                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  style: FontService.style(
+                    fontSize: 11,
+                    color: onSurf.withValues(alpha: 0.55),
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -179,24 +191,25 @@ class _ChatAppBarState extends State<ChatAppBar>
         IconButton(
           icon: Icon(
             widget.showSearch ? Icons.close : Icons.search,
-            color: Colors.white70,
+            color: onSurf.withValues(alpha: 0.75),
           ),
           onPressed: widget.onToggleSearch,
         ),
         IconButton(
           icon: Icon(
             widget.blockServerMessages ? Icons.cloud_off : Icons.cloud_queue,
-            color:
-                widget.blockServerMessages ? Colors.redAccent : Colors.white70,
+            color: widget.blockServerMessages
+                ? Colors.redAccent
+                : onSurf.withValues(alpha: 0.75),
           ),
           onPressed: widget.onToggleServerBlock,
         ),
         IconButton(
-          icon: const Icon(Icons.call, color: Colors.white70),
+          icon: Icon(Icons.call, color: onSurf.withValues(alpha: 0.75)),
           onPressed: widget.onCall,
         ),
         IconButton(
-          icon: const Icon(Icons.timer, color: Colors.white70),
+          icon: Icon(Icons.timer, color: onSurf.withValues(alpha: 0.75)),
           onPressed: widget.onTimer,
         ),
         IconButton(
@@ -210,7 +223,7 @@ class _ChatAppBarState extends State<ChatAppBar>
           onPressed: widget.onToggleWipe,
         ),
         IconButton(
-          icon: const Icon(Icons.tune, color: Colors.white70),
+          icon: Icon(Icons.tune, color: onSurf.withValues(alpha: 0.75)),
           onPressed: widget.onSettings,
         ),
       ],
@@ -220,7 +233,8 @@ class _ChatAppBarState extends State<ChatAppBar>
 
 class _BreathAirPainter extends CustomPainter {
   final double progress;
-  _BreathAirPainter({required this.progress});
+  final Color color;
+  _BreathAirPainter({required this.progress, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -233,7 +247,7 @@ class _BreathAirPainter extends CustomPainter {
     for (var i = 0; i < 3; i++) {
       final phase = (progress + i * 0.22) % 1.0;
       final alpha = (math.sin(phase * math.pi) * 0.45).clamp(0.0, 1.0);
-      paint.color = Colors.white.withValues(alpha: alpha);
+      paint.color = color.withValues(alpha: alpha);
 
       final path = Path();
       final amp = 3.0 + i * 1.5;
@@ -252,5 +266,5 @@ class _BreathAirPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _BreathAirPainter old) =>
-      old.progress != progress;
+      old.progress != progress || old.color != color;
 }

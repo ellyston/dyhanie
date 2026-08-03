@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/security_service.dart';
 import 'home_screen.dart';
@@ -41,19 +42,22 @@ class _PinLockScreenState extends State<PinLockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
               const SizedBox(height: 80),
-              const Icon(Icons.lock_outline, color: Colors.white54, size: 48),
+              Icon(Icons.lock_outline, color: onSurf.withValues(alpha: 0.55), size: 48),
               const SizedBox(height: 20),
               Text(
                 L.t('pin_lock'),
-                style: const TextStyle(color: Colors.white, fontSize: 24),
+                style: FontService.style(fontSize: 24, color: onSurf),
               ),
               const SizedBox(height: 40),
               TextField(
@@ -62,31 +66,37 @@ class _PinLockScreenState extends State<PinLockScreen> {
                 keyboardType: TextInputType.number,
                 maxLength: 4,
                 autofocus: true,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: FontService.style(
                   fontSize: 28,
                   letterSpacing: 16,
+                  color: onSurf,
                 ),
                 textAlign: TextAlign.center,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (v) {
                   if (v.length == 4) _unlock();
                 },
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   counterText: '',
                   hintText: '••••',
-                  hintStyle: TextStyle(color: Colors.white24, letterSpacing: 16),
+                  hintStyle: TextStyle(
+                    color: onSurf.withValues(alpha: 0.25),
+                    letterSpacing: 16,
+                  ),
                   enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
+                    borderSide: BorderSide(color: onSurf.withValues(alpha: 0.25)),
                   ),
                   focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white),
+                    borderSide: BorderSide(color: onSurf),
                   ),
                 ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
-                Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
               ],
             ],
           ),

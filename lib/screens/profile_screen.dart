@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -99,25 +100,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _deleteEverything() async {
+    final scheme = Theme.of(context).colorScheme;
     final pinOk = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(
-          L.t('delete_all_title'),
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          L.t('delete_all_body'),
-          style: const TextStyle(color: Colors.white70),
-        ),
+        backgroundColor: scheme.surfaceContainerHigh,
+        title: Text(L.t('delete_all_title')),
+        content: Text(L.t('delete_all_body')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              L.t('cancel'),
-              style: const TextStyle(color: Colors.white54),
-            ),
+            child: Text(L.t('cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -149,16 +142,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bg,
         elevation: 0,
         title: Text(
           L.t('profile'),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(fontSize: 18, color: onSurf),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
@@ -171,14 +167,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: _changeAvatar,
                   child: CircleAvatar(
                     radius: 48,
-                    backgroundColor: const Color(0xFF2A2A2A),
-                    backgroundImage: avatarBytes != null
-                        ? MemoryImage(avatarBytes!)
-                        : null,
+                    backgroundColor: onSurf.withValues(alpha: 0.1),
+                    backgroundImage:
+                        avatarBytes != null ? MemoryImage(avatarBytes!) : null,
                     child: avatarBytes == null
-                        ? const Icon(
+                        ? Icon(
                             Icons.add_a_photo_outlined,
-                            color: Colors.white38,
+                            color: onSurf.withValues(alpha: 0.4),
                             size: 28,
                           )
                         : null,
@@ -189,7 +184,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: _changeAvatar,
                   child: Text(
                     L.t('change_avatar'),
-                    style: const TextStyle(color: Colors.white38, fontSize: 13),
+                    style: FontService.style(
+                      fontSize: 13,
+                      color: onSurf.withValues(alpha: 0.4),
+                    ),
                   ),
                 ),
               ],
@@ -198,19 +196,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 36),
           Text(
             L.t('username'),
-            style: const TextStyle(color: Colors.white38, fontSize: 12),
+            style: FontService.style(
+              fontSize: 12,
+              color: onSurf.withValues(alpha: 0.4),
+            ),
           ),
           TextField(
             controller: _nameCtrl,
-            style: const TextStyle(color: Colors.white, fontSize: 18),
-            cursorColor: Colors.white,
-            decoration: const InputDecoration(
+            style: FontService.style(fontSize: 18, color: onSurf),
+            cursorColor: onSurf,
+            decoration: InputDecoration(
               border: InputBorder.none,
               enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white24),
+                borderSide: BorderSide(color: onSurf.withValues(alpha: 0.25)),
               ),
               focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white54),
+                borderSide: BorderSide(color: onSurf.withValues(alpha: 0.55)),
               ),
             ),
           ),
@@ -220,8 +221,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             height: 52,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
+                backgroundColor: onSurf,
+                foregroundColor: bg,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28),
                 ),
@@ -229,16 +230,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               onPressed: saving ? null : _save,
               child: saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 22,
                       height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: bg),
                     )
                   : Text(
                       L.t('save'),
-                      style: const TextStyle(
+                      style: FontService.style(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
+                        color: bg,
                       ),
                     ),
             ),
@@ -258,7 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: _deleteEverything,
               child: Text(
                 L.t('delete_all'),
-                style: const TextStyle(fontSize: 15),
+                style: FontService.style(fontSize: 15, color: Colors.redAccent),
               ),
             ),
           ),
@@ -266,10 +268,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(
             L.t('delete_all_hint'),
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white24,
+            style: FontService.style(
               fontSize: 11,
               height: 1.3,
+              color: onSurf.withValues(alpha: 0.3),
             ),
           ),
         ],

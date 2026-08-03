@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/contact_invite_service.dart';
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import 'home_screen.dart';
 
@@ -25,10 +26,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   bool _saving = false;
 
   Future<void> _pickAvatar() async {
-    final img = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 512,
-    );
+    final img = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 512);
     if (img != null) {
       final bytes = await img.readAsBytes();
       setState(() => _avatar = bytes);
@@ -79,8 +77,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -89,56 +90,57 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
               const SizedBox(height: 40),
               Text(
                 L.t('profile'),
-                style: const TextStyle(
-                  color: Colors.white,
+                style: FontService.style(
                   fontSize: 28,
                   fontWeight: FontWeight.w300,
+                  color: onSurf,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 L.t('profile_subtitle'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white54, fontSize: 14),
+                style: FontService.style(
+                  fontSize: 14,
+                  color: onSurf.withValues(alpha: 0.55),
+                ),
               ),
               const SizedBox(height: 40),
               GestureDetector(
                 onTap: _pickAvatar,
                 child: CircleAvatar(
                   radius: 55,
-                  backgroundColor: Colors.white12,
-                  backgroundImage:
-                      _avatar != null ? MemoryImage(_avatar!) : null,
+                  backgroundColor: onSurf.withValues(alpha: 0.08),
+                  backgroundImage: _avatar != null ? MemoryImage(_avatar!) : null,
                   child: _avatar == null
-                      ? const Icon(
-                          Icons.add_a_photo,
-                          color: Colors.white54,
-                          size: 32,
-                        )
+                      ? Icon(Icons.add_a_photo, color: onSurf.withValues(alpha: 0.55), size: 32)
                       : null,
                 ),
               ),
               const SizedBox(height: 10),
               Text(
                 L.t('avatar_optional'),
-                style: const TextStyle(color: Colors.white38, fontSize: 13),
+                style: FontService.style(
+                  fontSize: 13,
+                  color: onSurf.withValues(alpha: 0.4),
+                ),
               ),
               const SizedBox(height: 40),
               TextField(
                 controller: _controller,
-                style: const TextStyle(color: Colors.white, fontSize: 18),
+                style: FontService.style(fontSize: 18, color: onSurf),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')),
                 ],
                 decoration: InputDecoration(
                   labelText: L.t('username'),
-                  labelStyle: const TextStyle(color: Colors.white54),
+                  labelStyle: TextStyle(color: onSurf.withValues(alpha: 0.55)),
                   errorText: _error,
-                  enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: onSurf.withValues(alpha: 0.25)),
                   ),
-                  focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: onSurf),
                   ),
                 ),
                 onSubmitted: (_) => _save(),
@@ -149,22 +151,25 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 height: 52,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
+                    backgroundColor: onSurf,
+                    foregroundColor: bg,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                   onPressed: _saving ? null : _save,
                   child: _saving
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 22,
                           height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: bg,
+                          ),
                         )
                       : Text(
                           L.t('continue'),
-                          style: const TextStyle(fontSize: 16),
+                          style: FontService.style(fontSize: 16, color: bg),
                         ),
                 ),
               ),
