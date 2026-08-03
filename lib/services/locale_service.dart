@@ -413,6 +413,24 @@ class LocaleService {
       'history_shared': 'Отправлено сообщений: {n}',
       'font_preview_sample': 'Пример сообщения 123',
       'no_p2p_server_blocked': 'Нет P2P и сервер заблокирован',
+      'recovery_phrase_hint':
+         'Запишите эти 24 слова и храните в надёжном месте. По ним можно восстановить ключи на новом устройстве.',
+      'recovery_phrase_stub_note':
+         'Сейчас это демонстрационные слова. Настоящая криптография будет подключена позже.',
+      'recovery_phrase_confirm': 'Я записал(а) фразу в безопасном месте',
+      'phrase_copied': 'Фраза скопирована',
+      'restore_phrase_title': 'Восстановление',
+      'restore_phrase_hint': 'Введите 24 слова резервной фразы через пробел.',
+      'restore_phrase_placeholder': 'word1 word2 … word24',
+      'restore_phrase_action': 'Восстановить',
+      'restore_phrase_need_24': 'Нужно ровно 24 слова',
+      'restore_phrase_fail': 'Не удалось проверить фразу',
+      'restore_phrase_ok': 'Восстановление выполнено (заглушка)',
+      'security_section': 'Безопасность',
+      'recovery_phrase_menu': 'Резервная фраза',
+      'recovery_phrase_menu_sub': 'Показать или создать заново',
+      'restore_phrase_menu': 'Восстановить по фразе',
+      'restore_phrase_menu_sub': 'Вход на этом устройстве по 24 словам',
     },
 
     // ═══════════════════════════════════════
@@ -761,6 +779,25 @@ class LocaleService {
       'history_shared': 'Messages sent: {n}',
       'font_preview_sample': 'Sample message 123',
       'no_p2p_server_blocked': 'No P2P and server is blocked',
+      'recovery_phrase_title': 'Recovery phrase',
+      'recovery_phrase_hint':
+         'Write down these 24 words and keep them safe. You can restore keys on a new device with them.',
+      'recovery_phrase_stub_note':
+         'These are demo words for now. Real cryptography will be wired later.',
+      'recovery_phrase_confirm': 'I saved the phrase in a safe place',
+      'phrase_copied': 'Phrase copied',
+      'restore_phrase_title': 'Restore',
+      'restore_phrase_hint': 'Enter your 24 recovery words separated by spaces.',
+      'restore_phrase_placeholder': 'word1 word2 … word24',
+      'restore_phrase_action': 'Restore',
+      'restore_phrase_need_24': 'Exactly 24 words required',
+      'restore_phrase_fail': 'Could not verify phrase',
+      'restore_phrase_ok': 'Restore done (stub)',
+      'security_section': 'Security',
+      'recovery_phrase_menu': 'Recovery phrase',
+      'recovery_phrase_menu_sub': 'Show or create again',
+      'restore_phrase_menu': 'Restore from phrase',
+      'restore_phrase_menu_sub': 'Set up this device with 24 words',
     },
 
     // ═══════════════════════════════════════
@@ -1110,6 +1147,25 @@ class LocaleService {
       'history_shared': 'Gesendete Nachrichten: {n}',
       'font_preview_sample': 'Beispielnachricht 123',
       'no_p2p_server_blocked': 'Kein P2P und Server blockiert',
+      'recovery_phrase_title': 'Wiederherstellungsphrase',
+      'recovery_phrase_hint':
+         'Schreibe diese 24 Wörter auf und bewahre sie sicher auf. Damit kannst du Schlüssel auf einem neuen Gerät wiederherstellen.',
+      'recovery_phrase_stub_note':
+         'Vorläufig Demo-Wörter. Echte Kryptografie kommt später.',
+      'recovery_phrase_confirm': 'Ich habe die Phrase sicher gespeichert',
+      'phrase_copied': 'Phrase kopiert',
+      'restore_phrase_title': 'Wiederherstellen',
+      'restore_phrase_hint': 'Gib die 24 Wörter der Phrase mit Leerzeichen ein.',
+      'restore_phrase_placeholder': 'wort1 wort2 … wort24',
+      'restore_phrase_action': 'Wiederherstellen',
+      'restore_phrase_need_24': 'Genau 24 Wörter nötig',
+      'restore_phrase_fail': 'Phrase konnte nicht geprüft werden',
+      'restore_phrase_ok': 'Wiederherstellung ok (Stub)',
+      'security_section': 'Sicherheit',
+      'recovery_phrase_menu': 'Wiederherstellungsphrase',
+      'recovery_phrase_menu_sub': 'Anzeigen oder neu erstellen',
+      'restore_phrase_menu': 'Mit Phrase wiederherstellen',
+      'restore_phrase_menu_sub': 'Dieses Gerät mit 24 Wörtern einrichten',
     },
   };
 }

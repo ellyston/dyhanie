@@ -15,6 +15,8 @@ import 'language_screen.dart';
 import 'font_screen.dart';
 import 'icon_style_screen.dart';
 import 'theme_screen.dart';
+import 'recovery_phrase_screen.dart';
+import 'restore_phrase_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -45,7 +47,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _tile(
                 icon: AppIcons.theme,
                 title: L.t('theme'),
-                subtitle: L.t(ThemeService.catalog[ThemeService.code] ?? 'theme_dark'),
+                subtitle: L.t(
+                    ThemeService.catalog[ThemeService.code] ?? 'theme_dark'),
                 onTap: () async {
                   await Navigator.push(
                     context,
@@ -87,7 +90,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const AskQuestionScreen()),
+                    MaterialPageRoute(
+                        builder: (_) => const AskQuestionScreen()),
                   );
                 },
               ),
@@ -98,7 +102,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
+                    MaterialPageRoute(
+                        builder: (_) => const PrivacyPolicyScreen()),
                   );
                 },
               ),
@@ -111,7 +116,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const EnergySavingScreen()),
+                    MaterialPageRoute(
+                        builder: (_) => const EnergySavingScreen()),
                   );
                 },
               ),
@@ -125,6 +131,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     MaterialPageRoute(builder: (_) => const LanguageScreen()),
                   );
                   if (mounted) setState(() {});
+                },
+              ),
+              const SizedBox(height: 16),
+              _section(L.t('security_section')),
+              _tile(
+                icon: Icons.vpn_key_outlined,
+                title: L.t('recovery_phrase_menu'),
+                subtitle: L.t('recovery_phrase_menu_sub'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const RecoveryPhraseScreen(),
+                    ),
+                  );
+                },
+              ),
+              _tile(
+                icon: Icons.restore,
+                title: L.t('restore_phrase_menu'),
+                subtitle: L.t('restore_phrase_menu_sub'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const RestorePhraseScreen(),
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 16),
@@ -155,7 +189,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Text(
         title,
         style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
+          color:
+              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
           fontSize: 12,
           letterSpacing: 0.8,
         ),

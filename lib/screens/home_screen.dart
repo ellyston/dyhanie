@@ -21,6 +21,7 @@ import 'profile_screen.dart';
 import 'settings_screen.dart';
 import 'vpn_screen.dart';
 import 'welcome_screen.dart';
+import 'recovery_phrase_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -63,6 +64,23 @@ class _HomeScreenState extends State<HomeScreen> {
       avatarBytes = bytes;
     });
     _startBadgeListeners(name);
+    if (name.isNotEmpty) {
+      final shown = prefs.getBool('recovery_phrase_shown') ?? false;
+      if (!shown) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const RecoveryPhraseScreen(
+                popOnDone: true,
+                forceComplete: true,
+              ),
+            ),
+          );
+        });
+      }
+    }
+
   }
 
   void _recalcBadge() {
