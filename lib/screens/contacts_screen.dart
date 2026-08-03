@@ -12,6 +12,7 @@ import '../services/outbox_service.dart';
 import 'chat_screen.dart';
 import 'chats_screen.dart';
 import '../services/font_service.dart';
+import '../services/icon_style_service.dart';
 
 class ContactsScreen extends StatefulWidget {
   final String myUsername;
@@ -335,29 +336,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _contactActions(String name) {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: scheme.surfaceContainerHigh,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.chat_bubble_outline, color: Colors.white70),
-              title: Text(
-                L.t('write_message'),
-                style: const TextStyle(color: Colors.white),
+              leading: Icon(
+                AppIcons.note,
+                color: onSurf.withValues(alpha: 0.75),
               ),
-              onTap: () {
-                Navigator.pop(ctx);
-                _writeTo(name);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.note_alt_outlined, color: Colors.white70),
               title: Text(
                 L.t('note'),
-                style: const TextStyle(color: Colors.white),
+                style: FontService.style(color: onSurf),
               ),
               onTap: () {
                 Navigator.pop(ctx);
@@ -365,10 +361,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.volume_up, color: Colors.white70),
+              leading: Icon(
+                AppIcons.sound,
+                color: onSurf.withValues(alpha: 0.75),
+              ),
               title: Text(
                 L.t('sound'),
-                style: const TextStyle(color: Colors.white),
+                style: FontService.style(color: onSurf),
               ),
               onTap: () {
                 Navigator.pop(ctx);
@@ -376,10 +375,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.block, color: Colors.redAccent),
+              leading: Icon(
+                AppIcons.delete,
+                color: Colors.orangeAccent,
+              ),
+              title: Text(
+                L.t('delete'),
+                style: FontService.style(color: Colors.orangeAccent),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _remove(name);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                AppIcons.block,
+                color: Colors.redAccent,
+              ),
               title: Text(
                 L.t('block'),
-                style: const TextStyle(color: Colors.redAccent),
+                style: FontService.style(color: Colors.redAccent),
               ),
               onTap: () {
                 Navigator.pop(ctx);

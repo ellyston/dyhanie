@@ -25,7 +25,6 @@ class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onToggleServerBlock;
   final VoidCallback onCall;
-  final VoidCallback onTimer;
   final VoidCallback onToggleWipe;
   final VoidCallback onSettings;
 
@@ -48,7 +47,6 @@ class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.onSearchChanged,
     required this.onToggleServerBlock,
     required this.onCall,
-    required this.onTimer,
     required this.onToggleWipe,
     required this.onSettings,
   });
@@ -207,10 +205,6 @@ class _ChatAppBarState extends State<ChatAppBar>
         IconButton(
           icon: Icon(Icons.call, color: onSurf.withValues(alpha: 0.75)),
           onPressed: widget.onCall,
-        ),
-        IconButton(
-          icon: Icon(Icons.timer, color: onSurf.withValues(alpha: 0.75)),
-          onPressed: widget.onTimer,
         ),
         IconButton(
           tooltip:

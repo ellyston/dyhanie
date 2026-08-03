@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -5,6 +6,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/contact_invite_service.dart';
+import '../services/dialog_signal_service.dart';
 import '../services/font_service.dart';
 import '../services/icon_style_controller.dart';
 import '../services/icon_style_service.dart';
@@ -30,6 +33,13 @@ class _HomeScreenState extends State<HomeScreen> {
   String username = '';
   Uint8List? avatarBytes;
   int contactsBadge = 0;
+  int _inviteCount = 0;
+  int _msgSignalCount = 0;
+
+  final _invites = ContactInviteService();
+  final _signals = DialogSignalService();
+  StreamSubscription? _inviteSub;
+  StreamSubscription? _msgSignalSub;
 
   @override
   void initState() {
@@ -52,6 +62,52 @@ class _HomeScreenState extends State<HomeScreen> {
       username = name;
       avatarBytes = bytes;
     });
+    _startBadgeListeners(name);
+  }
+
+  void _recalcBadge() {
+    if (!mounted) return;
+    setState(() => contactsBadge = _inviteCount + _msgSignalCount);
+  }
+
+  void _startBadgeListeners(String name) {
+    _inviteSub?.cancel();
+    _msgSignalSub?.cancel();
+
+    if (name.isEmpty) {
+      _inviteCount = 0;
+      _msgSignalCount = 0;
+      _recalcBadge();
+      return;
+    }
+
+    _inviteSub = _invites.listenInvites(
+      myUsername: name,
+      onData: (list) {
+        _inviteCount = list.length;
+        _recalcBadge();
+      },
+    );
+
+    _msgSignalSub = _signals.listenMySignals(
+      myUsername: name,
+      onSignals: (map) {
+        int count = 0;
+        map.forEach((_, data) {
+          final type = data['type']?.toString() ?? '';
+          if (type == 'pending_in' || type == 'come_online') count++;
+        });
+        _msgSignalCount = count;
+        _recalcBadge();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _inviteSub?.cancel();
+    _msgSignalSub?.cancel();
+    super.dispose();
   }
 
   void _logout() {
@@ -187,17 +243,20 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 IconButton(
                   tooltip: L.t('settings'),
-                  icon: Icon(AppIcons.settings, color: onSurf.withValues(alpha: 0.75)),
+                  icon: Icon(AppIcons.settings,
+                      color: onSurf.withValues(alpha: 0.75)),
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      MaterialPageRoute(
+                          builder: (_) => const SettingsScreen()),
                     );
                   },
                 ),
                 IconButton(
                   tooltip: L.t('logout'),
-                  icon: Icon(AppIcons.logout, color: onSurf.withValues(alpha: 0.55)),
+                  icon: Icon(AppIcons.logout,
+                      color: onSurf.withValues(alpha: 0.55)),
                   onPressed: _logout,
                 ),
               ],
@@ -205,7 +264,8 @@ class _HomeScreenState extends State<HomeScreen> {
             actions: [
               IconButton(
                 tooltip: L.t('auto_lock'),
-                icon: Icon(AppIcons.timer, color: onSurf.withValues(alpha: 0.75)),
+                icon: Icon(AppIcons.timer,
+                    color: onSurf.withValues(alpha: 0.75)),
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -217,12 +277,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               IconButton(
                 tooltip: L.t('clear_cache'),
-                icon: Icon(AppIcons.clean, color: onSurf.withValues(alpha: 0.75)),
+                icon: Icon(AppIcons.clean,
+                    color: onSurf.withValues(alpha: 0.75)),
                 onPressed: _clearCache,
               ),
               IconButton(
                 tooltip: L.t('vpn'),
-                icon: Icon(AppIcons.shield, color: onSurf.withValues(alpha: 0.75)),
+                icon: Icon(AppIcons.shield,
+                    color: onSurf.withValues(alpha: 0.75)),
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -256,17 +318,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                         width: 192,
                                         height: 288,
                                         gaplessPlayback: true,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          color: onSurf.withValues(alpha: 0.08),
+                                        errorBuilder: (_, __, ___) =>
+                                            Container(
+                                          color:
+                                              onSurf.withValues(alpha: 0.08),
                                           alignment: Alignment.center,
                                           child: Icon(
                                             Icons.broken_image,
-                                            color: onSurf.withValues(alpha: 0.35),
+                                            color: onSurf.withValues(
+                                                alpha: 0.35),
                                           ),
                                         ),
                                       )
                                     : Container(
-                                        color: onSurf.withValues(alpha: 0.08),
+                                        color:
+                                            onSurf.withValues(alpha: 0.08),
                                         alignment: Alignment.center,
                                         child: Text(
                                           username.isNotEmpty
@@ -377,14 +443,15 @@ class _HomeScreenState extends State<HomeScreen> {
                               icon: AppIcons.contacts,
                               tooltip: L.t('contacts'),
                               badge: contactsBadge,
-                              onTap: () {
-                                Navigator.push(
+                              onTap: () async {
+                                await Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) =>
-                                        ContactsScreen(myUsername: username),
+                                    builder: (_) => ContactsScreen(
+                                        myUsername: username),
                                   ),
                                 );
+                                // слушатели на home живы — бейдж обновится сам
                               },
                             ),
                           ],

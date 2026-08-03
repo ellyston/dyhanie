@@ -110,4 +110,41 @@ class AppIcons {
 
   static IconData get chevron =>
       pick(Icons.chevron_right, Icons.chevron_right_rounded, Icons.chevron_right_sharp);
+    
+  static IconData get note => pick(
+        Icons.note_alt_outlined,
+        Icons.note_alt_rounded,
+        Icons.note_alt_sharp,
+      );
+
+  static IconData get sound => pick(
+        Icons.volume_up_outlined,
+        Icons.volume_up_rounded,
+        Icons.volume_up_sharp,
+      );
+
+  static IconData get delete => pick(
+        Icons.delete_outline,
+        Icons.delete_rounded,
+        Icons.delete_sharp,
+      );
+
+  static IconData get block => pick(
+        Icons.block_outlined,
+        Icons.block_flipped, // fallback, if no rounded
+        Icons.block_sharp,
+      );
+
+  static IconData get pin => pick(
+        Icons.push_pin_outlined,
+        Icons.push_pin_rounded,
+        Icons.push_pin_sharp,
+      );
+
+  static IconData get more => pick(
+        Icons.more_vert_outlined,
+        Icons.more_vert_rounded,
+        Icons.more_vert,
+      );
+
 }

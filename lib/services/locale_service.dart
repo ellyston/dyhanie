@@ -408,6 +408,11 @@ class LocaleService {
       'theme_auto': 'Авто (по времени суток)',
       'theme_auto_hint': 'Тёмная с 21:00 до 7:00',
       'export slot': 'Экспорт слота',
+      'share_history': 'Поделиться историей',
+      'share_history_hint': 'Отправить все сохранённые сообщения собеседнику',
+      'history_shared': 'Отправлено сообщений: {n}',
+      'font_preview_sample': 'Пример сообщения 123',
+      'no_p2p_server_blocked': 'Нет P2P и сервер заблокирован',
     },
 
     // ═══════════════════════════════════════
@@ -750,7 +755,12 @@ class LocaleService {
       'theme_dark': 'Dark',
       'theme_auto': 'Auto (by time of day)',
       'theme_auto_hint': 'Dark from 21:00 to 7:00',
-      'export slot': 'export slot'
+      'export slot': 'export slot',
+      'share_history': 'Share history',
+      'share_history_hint': 'Send all saved messages to the other person',
+      'history_shared': 'Messages sent: {n}',
+      'font_preview_sample': 'Sample message 123',
+      'no_p2p_server_blocked': 'No P2P and server is blocked',
     },
 
     // ═══════════════════════════════════════
@@ -1094,7 +1104,12 @@ class LocaleService {
       'theme_dark': 'Dunkel',
       'theme_auto': 'Auto (nach Tageszeit)',
       'theme_auto_hint': 'Dunkel von 21:00 bis 7:00',
-      'export slot': 'Slot exportieren'
+      'export slot': 'Slot exportieren',
+      'share_history': 'Verlauf teilen',
+      'share_history_hint': 'Alle gespeicherten Nachrichten an den Partner senden',
+      'history_shared': 'Gesendete Nachrichten: {n}',
+      'font_preview_sample': 'Beispielnachricht 123',
+      'no_p2p_server_blocked': 'Kein P2P und Server blockiert',
     },
   };
 }

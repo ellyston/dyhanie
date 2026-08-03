@@ -18,6 +18,7 @@ import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
+import '../services/font_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomCode;
@@ -62,10 +63,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   P2PService? _p2p;
   bool p2pConnected = false;
   String p2pStatusText = '';
-  bool blockServerMessages = false;
   String connectionMode = '';
 
-  int selectedTime = 30;
+  bool blockServerMessages = true;
+  int selectedTime = 0;
+  bool wipeOnExit = false; // зелёный = сохранять
+
   double messageFontSize = 16;
   Uint8List? backgroundBytes;
   Uint8List? myAvatarBytes;
@@ -87,7 +90,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   /// true = красный: при выходе чистим сервер + P2P
   /// false = зелёный: диалог сохраняется
-  bool wipeOnExit = true;
 
   final timeOptions = [0, 5, 10, 15, 30, 60, 120, 300, 600];
   Timer? _typingThrottle;
@@ -121,6 +123,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
 
+
     Uint8List? otherBytes;
     final other = otherUser ?? _otherFromRoomCode();
     if (other != null) {
@@ -138,6 +141,31 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       otherAvatarBytes = otherBytes;
     });
   }
+
+  String get _prefsPrefix => 'chat_cfg_${widget.roomCode}_';
+
+  Future<void> _loadChatConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    final p = _prefsPrefix;
+    if (!mounted) return;
+    setState(() {
+      wipeOnExit = prefs.getBool('${p}wipe') ?? false;
+      blockServerMessages = prefs.getBool('${p}block_server') ?? true;
+      selectedTime = prefs.getInt('${p}ttl') ?? 0;
+      messageFontSize = prefs.getDouble('${p}font') ?? 16.0;
+    });
+    _updateConnectionMode();
+  }
+
+  Future<void> _saveChatConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    final p = _prefsPrefix;
+    await prefs.setBool('${p}wipe', wipeOnExit);
+    await prefs.setBool('${p}block_server', blockServerMessages);
+    await prefs.setInt('${p}ttl', selectedTime);
+    await prefs.setDouble('${p}font', messageFontSize);
+  }
+
 
   Future<void> _clearMyIncomingSignal() async {
     if (!_looksLikeDirectDialog(widget.roomCode)) return;
@@ -190,6 +218,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _loadChatConfig();
     p2pStatusText = L.t('none');
     connectionMode = L.t('no_connection');
     WidgetsBinding.instance.addObserver(this);
@@ -966,107 +995,225 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _openTime() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: timeOptions.map((sec) {
-            final label = sec == 0
-                ? L.t('ttl_none')
-                : (sec < 60
-                    ? '$sec ${L.t('sec_short')}'
-                    : '${sec ~/ 60} ${L.t('min_short')}');
-            return ChoiceChip(
-              label: Text(label),
-              selected: selectedTime == sec,
-              onSelected: (_) {
-                setState(() => selectedTime = sec);
-                Navigator.pop(ctx);
-              },
-            );
-          }).toList(),
-        ),
-      ),
+  String _ttlLabel(int sec) {
+    if (sec == 0) return L.t('ttl_none');
+    if (sec == 5) return L.t('sec_5');
+    if (sec == 10) return L.t('sec_10');
+    if (sec == 15) return L.t('sec_15');
+    if (sec == 30) return L.t('sec_30');
+    if (sec == 60) return L.t('min_1');
+    if (sec == 120) return L.t('min_2');
+    if (sec == 300) return L.t('min_5');
+    if (sec == 600) return L.t('min_10');
+    return '$sec';
+  }
+
+  Future<void> _shareHistory() async {
+    if (messages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(L.t('no_messages'))),
+      );
+      return;
+    }
+    final canP2P = p2pConnected && _p2p != null;
+    final canServer = !blockServerMessages;
+    if (!canP2P && !canServer) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(L.t('no_p2p_server_blocked'))),
+      );
+      return;
+    }
+    var sent = 0;
+    for (final m in List<Map<String, dynamic>>.from(messages)) {
+      final text = m['text']?.toString() ?? '';
+      final imageB64 = m['image']?.toString();
+      if (text.isEmpty && imageB64 == null) continue;
+      final viaP2P = canP2P;
+      final key =
+          '${viaP2P ? 'p2p' : 'srv'}_hist_${DateTime.now().millisecondsSinceEpoch}_$sent';
+      final ts = m['timestamp'] is int
+          ? m['timestamp'] as int
+          : DateTime.now().millisecondsSinceEpoch;
+      final payload = {
+        'type': 'msg',
+        'key': key,
+        'text': text,
+        'timestamp': ts,
+        'ttl': 0,
+        'replyText': m['replyText'],
+        'replyUser': m['replyUser'],
+        'image': imageB64,
+      };
+      try {
+        if (viaP2P) {
+          _p2p!.send(jsonEncode(payload));
+        } else {
+          final ref = _db
+              .child('rooms')
+              .child(widget.roomCode)
+              .child('messages')
+              .push();
+          _knownServerKeys.add(ref.key ?? key);
+          await ref.set({
+            'text': text,
+            'username': widget.username,
+            'timestamp': ts,
+            'ttl': 0,
+            'p2p': false,
+            'replyText': m['replyText'],
+            'replyUser': m['replyUser'],
+            'image': imageB64,
+          });
+        }
+        sent++;
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(L.tParams('history_shared', {'n': '$sent'}))),
     );
   }
 
   void _openSettings() {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      isScrollControlled: true,
+      backgroundColor: scheme.surfaceContainerHigh,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setM) {
-          return Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  L.t('settings'),
-                  style: const TextStyle(color: Colors.white, fontSize: 18),
-                ),
-                Slider(
-                  value: messageFontSize,
-                  min: 12,
-                  max: 24,
-                  divisions: 12,
-                  activeColor: Colors.white,
-                  onChanged: (v) {
-                    setM(() => messageFontSize = v);
-                    setState(() => messageFontSize = v);
-                  },
-                ),
-                SwitchListTile(
-                  title: Text(
-                    L.t('block_server'),
-                    style: const TextStyle(color: Colors.white70),
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    L.t('settings'),
+                    textAlign: TextAlign.center,
+                    style: FontService.style(fontSize: 18, color: onSurf),
                   ),
-                  value: blockServerMessages,
-                  onChanged: (v) {
-                    setM(() => blockServerMessages = v);
-                    setState(() => blockServerMessages = v);
-                    _updateConnectionMode();
-                  },
-                ),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    final img = await _picker.pickImage(
-                      source: ImageSource.gallery,
-                      maxWidth: 1920,
-                    );
-                    if (img != null) {
-                      final b = await img.readAsBytes();
-                      setState(() => backgroundBytes = b);
-                    }
-                  },
-                  icon: const Icon(Icons.image, color: Colors.white70),
-                  label: Text(
-                    L.t('background'),
-                    style: const TextStyle(color: Colors.white70),
+                  const SizedBox(height: 16),
+                  Text(
+                    L.t('font_size'),
+                    style: FontService.style(
+                      color: onSurf.withValues(alpha: 0.7),
+                      fontSize: 13,
+                    ),
                   ),
-                ),
-                if (!isSavedChat)
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _db
-                          .child('rooms')
-                          .child(widget.roomCode)
-                          .child('meta')
-                          .update({
-                        'saveRequestedBy': widget.username,
-                        'saved': false,
-                      });
+                  Slider(
+                    value: messageFontSize,
+                    min: 12,
+                    max: 24,
+                    divisions: 12,
+                    label: messageFontSize.round().toString(),
+                    onChanged: (v) {
+                      setM(() => messageFontSize = v);
+                      setState(() => messageFontSize = v);
                     },
-                    child: Text(L.t('suggest_save')),
+                    onChangeEnd: (_) => _saveChatConfig(),
                   ),
-              ],
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      constraints: const BoxConstraints(maxWidth: 280),
+                      decoration: BoxDecoration(
+                        color: onSurf.withValues(alpha: 0.12),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(4),
+                        ),
+                      ),
+                      child: Text(
+                        L.t('font_preview_sample'),
+                        style: FontService.style(
+                          color: onSurf,
+                          fontSize: messageFontSize,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    L.t('ttl'),
+                    style: FontService.style(
+                      color: onSurf.withValues(alpha: 0.7),
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: timeOptions.map((sec) {
+                      final selected = selectedTime == sec;
+                      return ChoiceChip(
+                        label: Text(
+                          _ttlLabel(sec),
+                          style: FontService.style(
+                            fontSize: 12,
+                            color: selected ? scheme.surface : onSurf,
+                          ),
+                        ),
+                        selected: selected,
+                        selectedColor: onSurf,
+                        backgroundColor: onSurf.withValues(alpha: 0.08),
+                        onSelected: (_) async {
+                          setM(() => selectedTime = sec);
+                          setState(() => selectedTime = sec);
+                          await _saveChatConfig();
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.image_outlined,
+                        color: onSurf.withValues(alpha: 0.75)),
+                    title: Text(L.t('background'),
+                        style: FontService.style(color: onSurf)),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      final img = await _picker.pickImage(
+                        source: ImageSource.gallery,
+                        maxWidth: 1920,
+                      );
+                      if (img != null) {
+                        final b = await img.readAsBytes();
+                        setState(() => backgroundBytes = b);
+                      }
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.ios_share_outlined,
+                        color: onSurf.withValues(alpha: 0.75)),
+                    title: Text(L.t('share_history'),
+                        style: FontService.style(color: onSurf)),
+                    subtitle: Text(
+                      L.t('share_history_hint'),
+                      style: FontService.style(
+                        fontSize: 12,
+                        color: onSurf.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _shareHistory();
+                    },
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -1159,9 +1306,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               _updateConnectionMode();
             },
             onCall: _startCall,
-            onTimer: _openTime,
-            onToggleWipe: () {
+            onToggleWipe: () async {
               setState(() => wipeOnExit = !wipeOnExit);
+              await _saveChatConfig();
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
