@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'webrtc_ice.dart';
 
 class P2PService {
   final String roomCode;
@@ -47,29 +48,8 @@ class P2PService {
       await _myRef.remove();
     } catch (_) {}
 
-    final config = {
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-        {'urls': 'stun:stun1.l.google.com:19302'},
-        {
-          'urls': 'turn:openrelay.metered.ca:80',
-          'username': 'openrelayproject',
-          'credential': 'openrelayproject',
-        },
-        {
-          'urls': 'turn:openrelay.metered.ca:443',
-          'username': 'openrelayproject',
-          'credential': 'openrelayproject',
-        },
-        {
-          'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
-          'username': 'openrelayproject',
-          'credential': 'openrelayproject',
-        },
-      ],
-    };
+    _pc = await createPeerConnection(WebRtcIce.config);
 
-    _pc = await createPeerConnection(config);
 
     // Negotiated DataChannel — создаём с обеих сторон с одним id
     _channel = await _pc!.createDataChannel(

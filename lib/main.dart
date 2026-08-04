@@ -9,6 +9,7 @@ import 'services/locale_controller.dart';
 import 'services/locale_service.dart';
 import 'services/theme_controller.dart';
 import 'services/theme_service.dart';
+import 'services/webrtc_ice.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +30,8 @@ void main() async {
   await FontController.instance.init();
   await IconStyleController.instance.init();
   await ThemeController.instance.init();
+  await WebRtcIce.load();
+
 
   runApp(const MyApp());
 }

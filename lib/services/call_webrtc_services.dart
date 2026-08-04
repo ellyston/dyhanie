@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'webrtc_ice.dart';
 
 class CallWebRTCService {
   final String roomCode;
@@ -33,16 +34,11 @@ class CallWebRTCService {
   DatabaseReference get _callRef =>
       _db.child('rooms').child(roomCode).child('webrtc');
 
-  static const _ice = {
-    'iceServers': [
-      {'urls': 'stun:stun.l.google.com:19302'},
-      {'urls': 'stun:stun1.l.google.com:19302'},
-    ]
-  };
+ 
 
   Future<void> start() async {
     _statusCtrl.add('init');
-    _pc = await createPeerConnection(_ice);
+    _pc = await createPeerConnection(WebRtcIce.config);
 
     _pc!.onIceCandidate = (RTCIceCandidate c) {
       if (c.candidate == null) return;

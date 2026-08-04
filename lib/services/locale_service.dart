@@ -440,6 +440,15 @@ class LocaleService {
       'icon_outlined': 'Outlined',
       'icon_rounded': 'Rounded',
       'icon_sharp': 'Sharp',
+      'webrtc_ice_title': 'TURN / ICE',
+      'webrtc_ice_sub': 'Свои STUN и TURN для P2P',
+      'webrtc_ice_hint':
+          'Сигналинг и облачные сообщения — отдельно. Здесь только STUN/TURN для WebRTC. Блокировка сервера в чате не отключает TURN.',
+      'webrtc_stun': 'STUN (строка или несколько через запятую / с новой строки)',
+      'webrtc_turn': 'TURN / TURNS URL',
+      'webrtc_turn_password': 'Пароль TURN',
+      'webrtc_force_relay': 'Только через TURN',
+      'webrtc_force_relay_sub': 'Для LTE и проверки релеев',
     },
 
     // ═══════════════════════════════════════
@@ -816,6 +825,15 @@ class LocaleService {
       'icon_outlined': 'Outlined',
       'icon_rounded': 'Rounded',
       'icon_sharp': 'Sharp',
+      'webrtc_ice_title': 'TURN / ICE',
+      'webrtc_ice_sub': 'Custom STUN and TURN for P2P',
+      'webrtc_ice_hint':
+          'Signaling and cloud messages are separate. Only STUN/TURN for WebRTC here. Blocking the chat server does not disable TURN.',
+      'webrtc_stun': 'STUN (one per line or comma-separated)',
+      'webrtc_turn': 'TURN / TURNS URLs',
+      'webrtc_turn_password': 'TURN password',
+      'webrtc_force_relay': 'TURN only',
+      'webrtc_force_relay_sub': 'For LTE and relay testing',
     },
 
     // ═══════════════════════════════════════
@@ -1193,6 +1211,15 @@ class LocaleService {
       'icon_outlined': 'Outlined',
       'icon_rounded': 'Rounded',
       'icon_sharp': 'Sharp',
+       'webrtc_ice_title': 'TURN / ICE',
+      'webrtc_ice_sub': 'Eigene STUN- und TURN-Server für P2P',
+      'webrtc_ice_hint':
+          'Signaling und Cloud-Nachrichten sind getrennt. Hier nur STUN/TURN für WebRTC. Chat-Server blockieren schaltet TURN nicht ab.',
+      'webrtc_stun': 'STUN (pro Zeile oder kommagetrennt)',
+      'webrtc_turn': 'TURN / TURNS URLs',
+      'webrtc_turn_password': 'TURN-Passwort',
+      'webrtc_force_relay': 'Nur über TURN',
+      'webrtc_force_relay_sub': 'Für LTE und Relay-Tests',
     },
   };
 }

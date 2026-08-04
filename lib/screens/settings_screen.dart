@@ -7,7 +7,6 @@ import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 import '../services/theme_controller.dart';
 import '../services/theme_service.dart';
-import '../services/icon_style_service.dart' show AppIcons;
 import 'ask_question_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'energy_saving_screen.dart';
@@ -17,6 +16,7 @@ import 'icon_style_screen.dart';
 import 'theme_screen.dart';
 import 'recovery_phrase_screen.dart';
 import 'restore_phrase_screen.dart';
+import 'webrtc_ice_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -131,6 +131,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     MaterialPageRoute(builder: (_) => const LanguageScreen()),
                   );
                   if (mounted) setState(() {});
+                },
+              ),
+              _tile(
+                icon: Icons.hub_outlined,
+                title: L.t('webrtc_ice_title'),
+                subtitle: L.t('webrtc_ice_sub'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const WebrtcIceSettingsScreen(),
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 16),
