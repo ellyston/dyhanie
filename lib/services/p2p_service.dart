@@ -47,8 +47,10 @@ class P2PService {
     try {
       await _myRef.remove();
     } catch (_) {}
-
+    
+    await WebRtcIce.load();
     _pc = await createPeerConnection(WebRtcIce.config);
+   
 
 
     // Negotiated DataChannel — создаём с обеих сторон с одним id
