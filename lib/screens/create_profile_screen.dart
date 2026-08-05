@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import '../services/contact_invite_service.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import 'home_screen.dart';
+import '../services/dyhanie_api.dart';
 
 class CreateProfileScreen extends StatefulWidget {
   const CreateProfileScreen({super.key});
@@ -46,26 +48,47 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     });
 
     try {
+      // 1) связь с твоим VPS
+      await DyhanieApi.instance.connect();
+
+      // 2) занять username на сервере
+      await DyhanieApi.instance.usernameRegister(username);
+
+      // 3) сессия (сразу bind — дальше комнаты/signal)
+      await DyhanieApi.instance.sessionBind(username);
+
+      // 4) локально
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', username);
       if (_avatar != null) {
         await prefs.setString('avatar', base64Encode(_avatar!));
       }
 
-      await ContactInviteService().registerUsername(username);
+      // 5) старый Firebase-register — по желанию оставь или закомментируй:
+      // await ContactInviteService().registerUsername(username);
 
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _error = L.t('save_error'); // позже ключ network_timeout
+        _saving = false;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
+      if (!mounted) return;
+      final msg = e.toString();
+      setState(() {
+        if (msg.contains('TAKEN')) {
+          _error = L.t('username_taken'); // если ключа нет — временно текст ниже
+        } else {
           _error = L.t('save_error');
-          _saving = false;
-        });
-      }
+        }
+        _saving = false;
+      });
     }
   }
 
