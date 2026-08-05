@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../models/server_relay_mode.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
 
@@ -15,6 +16,7 @@ class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
   final bool otherOnline;
   final String connectionMode;
   final bool blockServerMessages;
+  final ServerRelayMode serverRelayMode;
   final bool wipeOnExit;
   final String myUsername;
   final Uint8List? myAvatarBytes;
@@ -38,6 +40,7 @@ class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.otherOnline,
     required this.connectionMode,
     required this.blockServerMessages,
+    required this.serverRelayMode,
     required this.wipeOnExit,
     required this.myUsername,
     required this.myAvatarBytes,
@@ -106,6 +109,26 @@ class _ChatAppBarState extends State<ChatAppBar>
               ),
       ),
     );
+  }
+
+  Widget _serverRelayIcon(Color onSurf) {
+    switch (widget.serverRelayMode) {
+      case ServerRelayMode.open:
+        return Icon(
+          Icons.cloud_outlined,
+          color: onSurf.withValues(alpha: 0.75),
+        );
+      case ServerRelayMode.soft:
+        return const Icon(Icons.cloud_off, color: Colors.redAccent);
+      case ServerRelayMode.hard:
+        return const Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(Icons.cloud_off, color: Colors.redAccent),
+            Icon(Icons.close, size: 16, color: Colors.redAccent),
+          ],
+        );
+    }
   }
 
   @override
@@ -194,12 +217,12 @@ class _ChatAppBarState extends State<ChatAppBar>
           onPressed: widget.onToggleSearch,
         ),
         IconButton(
-          icon: Icon(
-            widget.blockServerMessages ? Icons.cloud_off : Icons.cloud_queue,
-            color: widget.blockServerMessages
-                ? Colors.redAccent
-                : onSurf.withValues(alpha: 0.75),
-          ),
+          tooltip: switch (widget.serverRelayMode) {
+            ServerRelayMode.open => 'Сервер сообщений вкл',
+            ServerRelayMode.soft => 'Сервер выкл (мягко)',
+            ServerRelayMode.hard => 'Только P2P (жёстко)',
+          },
+          icon: _serverRelayIcon(onSurf),
           onPressed: widget.onToggleServerBlock,
         ),
         IconButton(
@@ -211,8 +234,7 @@ class _ChatAppBarState extends State<ChatAppBar>
               widget.wipeOnExit ? L.t('wipe_on_exit') : L.t('keep_on_exit'),
           icon: Icon(
             widget.wipeOnExit ? Icons.delete_forever : Icons.save_outlined,
-            color:
-                widget.wipeOnExit ? Colors.redAccent : Colors.greenAccent,
+            color: widget.wipeOnExit ? Colors.redAccent : Colors.greenAccent,
           ),
           onPressed: widget.onToggleWipe,
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'locale_service.dart';
 
 /// Новый стиль иконок:
 /// 1) ключ в [catalog]
@@ -146,16 +147,5 @@ class AppIcons {
         Icons.more_vert_rounded,
         Icons.more_vert,
       );
-  static const Map<String, String> catalog = {
-      'icon_outlined',
-      'icon_rounded',
-      'icon_sharp',
-  };
-
-  static String label(String code) {
-    final key = catalog[code];
-    if (key == null) return code;
-    return L.t(key);
-  }
 
 }

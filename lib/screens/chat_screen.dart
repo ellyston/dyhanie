@@ -19,6 +19,7 @@ import '../widgets/chat_message_list.dart';
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
 import '../services/font_service.dart';
+import '../models/server_relay_mode.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomCode;
@@ -65,7 +66,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String p2pStatusText = '';
   String connectionMode = '';
 
-  bool blockServerMessages = true;
+  ServerRelayMode serverRelayMode = ServerRelayMode.open;
+
+  bool get blockServerMessages => serverRelayMode.isBlocked;
+
   int selectedTime = 0;
   bool wipeOnExit = false; // зелёный = сохранять
 
@@ -148,9 +152,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final p = _prefsPrefix;
     if (!mounted) return;
+    final legacy = prefs.getBool('${p}block_server');
+    final raw = prefs.getString('${p}server_relay');
     setState(() {
       wipeOnExit = prefs.getBool('${p}wipe') ?? false;
-      blockServerMessages = prefs.getBool('${p}block_server') ?? true;
+      serverRelayMode =
+          ServerRelayModeX.fromPrefs(raw, legacyBlock: legacy);
       selectedTime = prefs.getInt('${p}ttl') ?? 0;
       messageFontSize = prefs.getDouble('${p}font') ?? 16.0;
     });
@@ -161,7 +168,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final p = _prefsPrefix;
     await prefs.setBool('${p}wipe', wipeOnExit);
-    await prefs.setBool('${p}block_server', blockServerMessages);
+    await prefs.setString('${p}server_relay', serverRelayMode.prefsValue);
+    await prefs.setBool('${p}block_server', serverRelayMode.isBlocked);
     await prefs.setInt('${p}ttl', selectedTime);
     await prefs.setDouble('${p}font', messageFontSize);
   }
@@ -256,7 +264,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final mode = p2pConnected
         ? L.t('p2p_connected')
         : (otherUser != null
-            ? (blockServerMessages ? L.t('p2p_only_wait') : L.t('via_server'))
+            ? (blockServerMessages 
+              ? L.t('p2p_only_wait') 
+              : L.t('via_server'))
             : L.t('no_connection'));
     if (mounted) setState(() => connectionMode = mode);
   }
@@ -333,10 +343,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _p2pStatusSub?.cancel();
     _p2pStatusSub = _p2p!.status.listen((s) {
       if (mounted) setState(() => p2pStatusText = s);
+
       if (s == 'p2p_open') {
         if (mounted) {
-          setState(() => p2pConnected = true);
+          setState(() {
+            p2pConnected = true;
+            if (serverRelayMode == ServerRelayMode.open) {
+              serverRelayMode = ServerRelayMode.soft;
+            }
+          });
           _updateConnectionMode();
+          _saveChatConfig();
         }
         return;
       }
@@ -349,8 +366,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!bad) return;
 
       if (mounted) {
-        setState(() => p2pConnected = false);
+        setState(() {
+          p2pConnected = false;
+          if (serverRelayMode == ServerRelayMode.soft) {
+            serverRelayMode = ServerRelayMode.open;
+          }
+        });
         _updateConnectionMode();
+        _saveChatConfig();
       }
       _p2pMsgSub?.cancel();
       _p2pStatusSub?.cancel();
@@ -1016,7 +1039,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
     final canP2P = p2pConnected && _p2p != null;
-    final canServer = !blockServerMessages;
+    final canServer = !blockServerMessages ;
     if (!canP2P && !canServer) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(L.t('no_p2p_server_blocked'))),
@@ -1280,14 +1303,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           backgroundColor: Colors.transparent,
           appBar: ChatAppBar(
             // ... все параметры как были — не меняй
+            serverRelayMode: serverRelayMode,
+            blockServerMessages: blockServerMessages,
             showSearch: showSearch,
             searchController: _searchCtrl,
             isDirect: _looksLikeDirectDialog(widget.roomCode),
             roomCode: widget.roomCode,
             otherUser: otherUser,
             otherOnline: otherOnline,
-            connectionMode: connectionMode,
-            blockServerMessages: blockServerMessages,
+            connectionMode: connectionMode, 
             wipeOnExit: wipeOnExit,
             myUsername: widget.username,
             myAvatarBytes: myAvatarBytes,
@@ -1301,9 +1325,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               }
             }),
             onSearchChanged: (v) => setState(() => searchQuery = v.trim()),
-            onToggleServerBlock: () {
-              setState(() => blockServerMessages = !blockServerMessages);
+            onToggleServerBlock: () async {
+              setState(() => serverRelayMode = serverRelayMode.next);
               _updateConnectionMode();
+              await _saveChatConfig();
             },
             onCall: _startCall,
             onToggleWipe: () async {
@@ -1457,7 +1482,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ChatInputBar(
                 controller: _controller,
                 p2pConnected: p2pConnected,
-                blockServerMessages: blockServerMessages,
+                blockServerMessages : blockServerMessages,
                 replyTo: replyTo,
                 onAttach: _attach,
                 onEmoji: _openEmoji,

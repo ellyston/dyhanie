@@ -36,7 +36,11 @@ class FontService {
     await p.setString(prefKey, code);
   }
 
-  static String label(String code) => catalog[code] ?? code;
+  static String label(String code) {
+    final key = catalog[code];
+    if (key == null) return code;
+    return L.t(key);
+  }
 
   static TextStyle style({
     double fontSize = 14,
@@ -71,18 +75,6 @@ class FontService {
       default:
         return base;
     }
-  }
-   static const Map<String, String> catalog = {
-    'system': 'font_system',
-    'outfit': 'font_outfit',
-    'cormorant': 'font_cormorant',
-  };
-
-  static String label(String code) {
-    final key = catalog[code];
-    if (key == null) return code;
-    // ignore: unnecessary_import — locale уже в проекте
-    return L.t(key);
   }
 
 }
