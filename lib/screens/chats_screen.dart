@@ -10,6 +10,7 @@ import '../services/font_service.dart';
 import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 import '../services/outbox_service.dart';
+import '../services/unread_chats_service.dart';
 import 'chat_screen.dart';
 
 class ChatsScreen extends StatefulWidget {
@@ -35,11 +36,13 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Map<String, String> notes = {};
 
   StreamSubscription? _sub;
+  StreamSubscription? _unreadSub;
 
   @override
   void initState() {
     super.initState();
     _bootstrap();
+
     _sub = _signals.listenMySignals(
       myUsername: widget.myUsername,
       onSignals: (map) {
@@ -102,9 +105,44 @@ class _ChatsScreenState extends State<ChatsScreen> {
         });
       },
     );
+
+    _unreadSub = UnreadChatsService.instance.changes.listen((map) {
+      if (!mounted) return;
+      setState(() {
+        for (final e in map.entries) {
+          final prev = items[e.key];
+          if (prev == null) {
+            final other =
+                _otherFromDialogId(e.key, widget.myUsername) ?? e.key;
+            items[e.key] = _ChatItem(
+              dialogId: e.key,
+              otherUser: other,
+              incomingCount: e.value,
+              comeOnline: false,
+              updatedAt: DateTime.now().millisecondsSinceEpoch,
+              hasOutbox: false,
+              isSaved: false,
+              preview: '',
+            );
+          } else {
+            items[e.key] = _ChatItem(
+              dialogId: prev.dialogId,
+              otherUser: prev.otherUser,
+              incomingCount: e.value,
+              comeOnline: prev.comeOnline,
+              updatedAt: prev.updatedAt,
+              hasOutbox: prev.hasOutbox,
+              isSaved: prev.isSaved,
+              preview: prev.preview,
+            );
+          }
+        }
+      });
+    });
   }
 
   Future<void> _bootstrap() async {
+    await UnreadChatsService.instance.load();
     await _loadMeta();
     await _loadSaved();
     await _loadLocalPending();
@@ -137,6 +175,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   Future<void> _loadSaved() async {
     final saved = await _history.listSaved();
+    final unreadMap = UnreadChatsService.instance.snapshot;
     if (!mounted) return;
     setState(() {
       for (final row in saved) {
@@ -147,10 +186,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
         items[id] = _ChatItem(
           dialogId: id,
           otherUser: other,
-          incomingCount: prev?.incomingCount ?? 0,
+          incomingCount: unreadMap[id] ?? prev?.incomingCount ?? 0,
           comeOnline: prev?.comeOnline ?? false,
-          updatedAt:
-              (row['updatedAt'] as int?) ?? (prev?.updatedAt ?? 0),
+          updatedAt: (row['updatedAt'] as int?) ?? (prev?.updatedAt ?? 0),
           hasOutbox: prev?.hasOutbox ?? false,
           isSaved: true,
           preview: row['preview']?.toString() ?? prev?.preview ?? '',
@@ -215,6 +253,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   void _open(_ChatItem item) {
+    UnreadChatsService.instance.clear(item.dialogId);
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -345,6 +384,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
     if (ok != true) return;
 
     await _history.clear(item.dialogId);
+    await UnreadChatsService.instance.clear(item.dialogId);
     pinnedIds.remove(item.dialogId);
     notes.remove(item.dialogId);
     await _savePinned();
@@ -418,6 +458,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
   @override
   void dispose() {
     _sub?.cancel();
+    _unreadSub?.cancel();
     super.dispose();
   }
 
@@ -459,6 +500,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 final note = notes[item.dialogId];
 
                 return ListTile(
+                  tileColor: item.incomingCount > 0
+                      ? Colors.blueAccent.withValues(alpha: 0.12)
+                      : null,
                   leading: CircleAvatar(
                     backgroundColor: onSurf.withValues(alpha: 0.1),
                     child: Text(
@@ -484,15 +528,17 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       ),
                     ],
                   ),
-                  subtitle: Text(
-                    (note != null && note.isNotEmpty) ? note : item.subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: FontService.style(
-                      color: onSurf.withValues(alpha: 0.55),
-                      fontSize: 12,
-                    ),
-                  ),
+                 subtitle: (note != null && note.isNotEmpty)
+                      ? Text(
+                          note,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: FontService.style(
+                            color: onSurf.withValues(alpha: 0.55),
+                            fontSize: 12,
+                          ),
+                        )
+                      : null,
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

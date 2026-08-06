@@ -196,6 +196,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
       myUsername: widget.myUsername,
       fromUsername: from,
     );
+    if (!mounted) return;
+    setState(() {
+      incomingInvites =
+          incomingInvites.where((e) => e['from']?.toString() != from).toList();
+    });
     await _load();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -210,6 +215,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
       myUsername: widget.myUsername,
       fromUsername: from,
     );
+    if (!mounted) return;
+    setState(() {
+      incomingInvites =
+          incomingInvites.where((e) => e['from']?.toString() != from).toList();
+    });
   }
 
   Future<void> _cancelOutgoing(String to) async {
@@ -218,6 +228,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
       toUsername: to,
     );
     if (!mounted) return;
+    setState(() {
+      outgoingInvites =
+          outgoingInvites.where((e) => e['to']?.toString() != to).toList();
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(L.tParams('invite_cancelled', {'name': to})),

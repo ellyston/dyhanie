@@ -14,6 +14,8 @@ import '../services/dialog_signal_service.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/p2p_service.dart';
+import '../services/dyhanie_api.dart';
+import '../services/unread_chats_service.dart';
 import '../widgets/chat_app_bar.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
@@ -50,6 +52,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   StreamSubscription? _p2pMsgSub;
   StreamSubscription? _p2pStatusSub;
+  StreamSubscription? _apiMsgSub;
 
   P2PService? _p2p;
   bool p2pConnected = false;
@@ -235,6 +238,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _clearMyIncomingSignal();
     Future.delayed(const Duration(milliseconds: 300), _loadSavedHistory);
     Future.delayed(const Duration(milliseconds: 200), _bootstrapPeer);
+    _listenServerMessages();
+    Future.delayed(const Duration(milliseconds: 400), _syncServerMessages);
+    UnreadChatsService.instance.startListening(openRoomCode: widget.roomCode);
   }
 
   @override
@@ -257,6 +263,67 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             : L.t('no_connection'));
     if (mounted) setState(() => connectionMode = mode);
   }
+
+  void _listenServerMessages() {
+    _apiMsgSub?.cancel();
+    _apiMsgSub = DyhanieApi.instance.events.listen((m) {
+      if (m['type']?.toString() != 'msg.incoming') return;
+
+      final p = m['payload'];
+      if (p is! Map) return;
+      final room = p['room']?.toString() ?? '';
+      if (room != widget.roomCode) return;
+
+      final from = p['from']?.toString() ?? '';
+      if (from == widget.username) return;
+
+      final msgId = p['msg_id']?.toString() ?? '';
+      if (msgId.isEmpty || _knownServerKeys.contains(msgId)) return;
+      _knownServerKeys.add(msgId);
+
+      final body = p['body']?.toString() ?? '';
+      // body может быть JSON {text, image, ...} или простой текст
+      String text = body;
+      String? image;
+      String? replyText;
+      String? replyUser;
+      int ttl = selectedTime;
+      try {
+        if (body.startsWith('{')) {
+          final j = jsonDecode(body) as Map<String, dynamic>;
+          text = j['text']?.toString() ?? '';
+          image = j['image']?.toString();
+          replyText = j['replyText']?.toString();
+          replyUser = j['replyUser']?.toString();
+          ttl = j['ttl'] is int ? j['ttl'] as int : selectedTime;
+        }
+      } catch (_) {}
+
+      final msg = {
+        'key': msgId,
+        'text': text,
+        'username': from,
+        'timestamp': p['created_at'] is int
+            ? p['created_at'] as int
+            : DateTime.now().millisecondsSinceEpoch,
+        'ttl': ttl,
+        'p2p': false,
+        'replyText': replyText,
+        'replyUser': replyUser,
+        'image': image,
+        'status': 'delivered',
+      };
+
+      if (!mounted) return;
+      setState(() => messages = [...messages, msg]);
+      if (!isSavedChat && ttl > 0) _startTimer(msg);
+      _scrollEnd();
+
+      DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
+    });
+  }
+
+  
 
   Future<void> _startP2P(String other) async {
     if (_p2p != null) return;
@@ -428,19 +495,137 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
+  Map<String, dynamic>? _parseServerPayload(Map p) {
+    final msgId = p['msg_id']?.toString() ?? '';
+    if (msgId.isEmpty) return null;
+    if (_knownServerKeys.contains(msgId)) return null;
+
+    final room = p['room']?.toString() ?? '';
+    if (room != widget.roomCode) return null;
+
+    final from = p['from']?.toString() ?? '';
+    if (from.isEmpty || from == widget.username) return null;
+
+    final body = p['body']?.toString() ?? '';
+    String text = body;
+    String? image;
+    String? replyText;
+    String? replyUser;
+    int ttl = selectedTime;
+    try {
+      if (body.startsWith('{')) {
+        final j = jsonDecode(body) as Map<String, dynamic>;
+        text = j['text']?.toString() ?? '';
+        image = j['image']?.toString();
+        replyText = j['replyText']?.toString();
+        replyUser = j['replyUser']?.toString();
+        if (j['ttl'] is int) ttl = j['ttl'] as int;
+      }
+    } catch (_) {}
+
+    return {
+      'key': msgId,
+      'text': text,
+      'username': from,
+      'timestamp': p['created_at'] is int
+          ? p['created_at'] as int
+          : DateTime.now().millisecondsSinceEpoch,
+      'ttl': ttl,
+      'p2p': false,
+      'replyText': replyText,
+      'replyUser': replyUser,
+      'image': image,
+      'status': 'delivered',
+    };
+  }
+
+  void _ingestServerMsg(Map p) {
+    if (blockServerMessages) return;
+
+    final msgId = p['msg_id']?.toString() ?? '';
+    if (msgId.isEmpty) return;
+
+    if (_knownServerKeys.contains(msgId)) {
+      DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
+      return;
+    }
+
+    final room = p['room']?.toString() ?? '';
+    if (room != widget.roomCode) return;
+
+    final from = p['from']?.toString() ?? '';
+    if (from.isEmpty || from == widget.username) return;
+
+    final body = p['body']?.toString() ?? '';
+    String text = body;
+    String? image;
+    String? replyText;
+    String? replyUser;
+    int ttl = selectedTime;
+    try {
+      if (body.startsWith('{')) {
+        final j = jsonDecode(body) as Map<String, dynamic>;
+        text = j['text']?.toString() ?? '';
+        image = j['image']?.toString();
+        replyText = j['replyText']?.toString();
+        replyUser = j['replyUser']?.toString();
+        if (j['ttl'] is int) ttl = j['ttl'] as int;
+      }
+    } catch (_) {}
+
+    final msg = <String, dynamic>{
+      'key': msgId,
+      'text': text,
+      'username': from,
+      'timestamp': p['created_at'] is int
+          ? p['created_at'] as int
+          : DateTime.now().millisecondsSinceEpoch,
+      'ttl': ttl,
+      'p2p': false,
+      'replyText': replyText,
+      'replyUser': replyUser,
+      'image': image,
+      'status': 'delivered',
+    };
+
+    _knownServerKeys.add(msgId);
+
+    if (!mounted) return;
+    setState(() => messages = [...messages, msg]);
+    if (!isSavedChat && ttl > 0) _startTimer(msg);
+    _scrollEnd();
+
+    DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
+    UnreadChatsService.instance.clear(widget.roomCode);
+  }
+
+
+  Future<void> _syncServerMessages() async {
+    if (blockServerMessages) return;
+    try {
+      final list = await DyhanieApi.instance.msgSync();
+      for (final p in list) {
+        _ingestServerMsg(p);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _send({String? imageB64}) async {
     final text = _controller.text.trim();
     if (text.isEmpty && imageB64 == null) return;
 
     final canP2P = p2pConnected && _p2p != null;
-    if (!canP2P) {
+    final canServer = !blockServerMessages;
+    if (!canP2P && !canServer) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(L.t('no_p2p_server_blocked'))),
       );
       return;
     }
 
-    final key = 'p2p_${DateTime.now().millisecondsSinceEpoch}';
+    final viaP2P = canP2P;
+    final key =
+        '${viaP2P ? 'p2p' : 'srv'}_${DateTime.now().millisecondsSinceEpoch}';
     final ts = DateTime.now().millisecondsSinceEpoch;
 
     final msg = {
@@ -449,7 +634,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'username': widget.username,
       'timestamp': ts,
       'ttl': selectedTime,
-      'p2p': true,
+      'p2p': viaP2P,
       'replyText': replyTo?['text'],
       'replyUser': replyTo?['username'],
       'image': imageB64,
@@ -463,16 +648,51 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!isSavedChat && selectedTime > 0) _startTimer(msg);
     _scrollEnd();
 
-    _p2p!.send(jsonEncode({
-      'type': 'msg',
-      'key': key,
-      'text': text,
-      'timestamp': ts,
-      'ttl': selectedTime,
-      'replyText': msg['replyText'],
-      'replyUser': msg['replyUser'],
-      'image': imageB64,
-    }));
+    if (viaP2P) {
+      _p2p!.send(jsonEncode({
+        'type': 'msg',
+        'key': key,
+        'text': text,
+        'timestamp': ts,
+        'ttl': selectedTime,
+        'replyText': msg['replyText'],
+        'replyUser': msg['replyUser'],
+        'image': imageB64,
+      }));
+    } else {
+      final other = otherUser ?? _otherFromRoomCode();
+      if (other == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(L.t('no_connection'))),
+          );
+        }
+        return;
+      }
+      final body = jsonEncode({
+        'text': text,
+        'ttl': selectedTime,
+        'replyText': msg['replyText'],
+        'replyUser': msg['replyUser'],
+        'image': imageB64,
+      });
+      try {
+        await DyhanieApi.instance.msgSend(
+          room: widget.roomCode,
+          to: other,
+          msgId: key,
+          body: body,
+          contentType: imageB64 != null ? 'image' : 'text',
+        );
+        _knownServerKeys.add(key);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${L.t('error')}: $e')),
+          );
+        }
+      }
+    }
 
     await _notifyDirectIncoming();
     _controller.clear();
@@ -808,8 +1028,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    UnreadChatsService.instance.startListening();
     _p2pMsgSub?.cancel();
     _p2pStatusSub?.cancel();
+    _apiMsgSub?.cancel();
     _p2p?.dispose();
     for (final t in _timers.values) {
       t.cancel();

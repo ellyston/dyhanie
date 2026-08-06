@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -13,15 +12,15 @@ import '../services/icon_style_controller.dart';
 import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 import 'auto_lock_settings_screen.dart';
-import 'chat_screen.dart';
 import 'chats_screen.dart';
 import 'contacts_screen.dart';
-import 'join_room_screen.dart';
+import '../services/unread_chats_service.dart';
 import 'profile_screen.dart';
+import 'recovery_phrase_screen.dart';
 import 'settings_screen.dart';
 import 'vpn_screen.dart';
 import 'welcome_screen.dart';
-import 'recovery_phrase_screen.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -34,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String username = '';
   Uint8List? avatarBytes;
   int contactsBadge = 0;
+  int chatsBadge = 0;
   int _inviteCount = 0;
   int _msgSignalCount = 0;
 
@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _signals = DialogSignalService();
   StreamSubscription? _inviteSub;
   StreamSubscription? _msgSignalSub;
+  StreamSubscription? _unreadSub;
 
   @override
   void initState() {
@@ -53,6 +54,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final name = prefs.getString('username') ?? '';
     final b64 = prefs.getString('avatar');
     Uint8List? bytes;
+    await UnreadChatsService.instance.load();
+    UnreadChatsService.instance.startListening();
+    _unreadSub?.cancel();
+    _unreadSub = UnreadChatsService.instance.changes.listen((_) {
+      if (!mounted) return;
+      setState(() {
+         chatsBadge = UnreadChatsService.instance.dialogCount;
+      });
+    });
+    if (mounted){ 
+      setState(() {
+        chatsBadge = UnreadChatsService.instance.dialogCount;
+      });
+    }
     if (b64 != null && b64.isNotEmpty) {
       try {
         bytes = base64Decode(b64);
@@ -80,12 +95,27 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
-
   }
 
   void _recalcBadge() {
     if (!mounted) return;
     setState(() => contactsBadge = _inviteCount + _msgSignalCount);
+  }
+
+  Future<void> _refreshInviteBadge() async {
+    if (username.isEmpty) {
+      _inviteCount = 0;
+      _recalcBadge();
+      return;
+    }
+    try {
+      final list = await _invites.fetchInvites();
+      final incoming = list['incoming'] as List? ?? [];
+      _inviteCount = incoming.length;
+    } catch (_) {
+      _inviteCount = 0;
+    }
+    _recalcBadge();
   }
 
   void _startBadgeListeners(String name) {
@@ -112,19 +142,22 @@ class _HomeScreenState extends State<HomeScreen> {
       onSignals: (map) {
         int count = 0;
         map.forEach((_, data) {
-          final type = data['type']?.toString() ?? '';
-          if (type == 'pending_in' || type == 'come_online') count++;
+          final t = data['type']?.toString() ?? '';
+          if (t == 'pending_in' || t == 'come_online') count++;
         });
         _msgSignalCount = count;
         _recalcBadge();
       },
     );
+
+    _refreshInviteBadge();
   }
 
   @override
   void dispose() {
     _inviteSub?.cancel();
     _msgSignalSub?.cancel();
+    _unreadSub?.cancel();
     super.dispose();
   }
 
@@ -171,12 +204,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(L.t('cache_cleared'))),
     );
-  }
-
-  String _generateRoomCode() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final r = Random.secure();
-    return List.generate(8, (_) => chars[r.nextInt(chars.length)]).join();
   }
 
   Widget _roundAction({
@@ -229,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openProfile() async {
+  Future<void> _openProfile() async {
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -240,10 +267,19 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openContacts() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ContactsScreen(myUsername: username),
+      ),
+    );
+    await _refreshInviteBadge();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final onSurf = scheme.onSurface;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     final bg = Theme.of(context).scaffoldBackgroundColor;
 
     return AnimatedBuilder(
@@ -267,7 +303,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const SettingsScreen()),
+                        builder: (_) => const SettingsScreen(),
+                      ),
                     );
                   },
                 ),
@@ -315,7 +352,8 @@ class _HomeScreenState extends State<HomeScreen> {
           body: SafeArea(
             child: Stack(
               children: [
-                Center(
+                Align(
+                  alignment: const Alignment(0, -0.55),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -383,7 +421,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 20),
                       Text(
                         L.t('app_name'),
                         style: FontService.style(
@@ -402,43 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   bottom: 28,
                   child: Row(
                     children: [
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _roundAction(
-                              icon: AppIcons.add,
-                              tooltip: L.t('create_room'),
-                              onTap: () {
-                                final code = _generateRoomCode();
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatScreen(
-                                      roomCode: code,
-                                      username: username,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 28),
-                            _roundAction(
-                              icon: AppIcons.login,
-                              tooltip: L.t('join_by_code'),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        JoinRoomScreen(username: username),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
+                      const Expanded(child: SizedBox()),
                       Expanded(
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -446,14 +448,19 @@ class _HomeScreenState extends State<HomeScreen> {
                             _roundAction(
                               icon: AppIcons.chat,
                               tooltip: L.t('saved_chats'),
-                              onTap: () {
-                                Navigator.push(
+                              badge: chatsBadge,
+                              onTap: () async {
+                                await Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) =>
                                         ChatsScreen(myUsername: username),
                                   ),
                                 );
+                                if (mounted) {
+                                  setState(() => chatsBadge =
+                                      UnreadChatsService.instance.dialogCount);
+                                }
                               },
                             ),
                             const SizedBox(width: 28),
@@ -461,16 +468,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               icon: AppIcons.contacts,
                               tooltip: L.t('contacts'),
                               badge: contactsBadge,
-                              onTap: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ContactsScreen(
-                                        myUsername: username),
-                                  ),
-                                );
-                                // слушатели на home живы — бейдж обновится сам
-                              },
+                              onTap: _openContacts,
                             ),
                           ],
                         ),

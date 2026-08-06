@@ -189,6 +189,17 @@ class DyhanieApi {
     if (r['ok'] != true) throw Exception(r['error']?['code'] ?? 'MSG_FAIL');
   }
 
+  Future<List<Map<String, dynamic>>> msgSync() async {
+    final r = await request('msg.sync');
+    if (r['ok'] != true) return [];
+    final payload = r['payload'];
+    if (payload is! Map) return [];
+    final list = payload['messages'] as List? ?? [];
+    return list
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
   Future<void> msgAckRead(String msgId) async {
     final r = await request('msg.ackRead', payload: {'msg_id': msgId});
     if (r['ok'] != true) throw Exception(r['error']?['code'] ?? 'ACK_FAIL');
