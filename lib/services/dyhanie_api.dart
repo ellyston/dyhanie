@@ -3,13 +3,13 @@ import 'dart:convert';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-/// Клиент к своему signaling/API на VPS (без Firebase).
+/// Клиент к своему signalа VPS
 class DyhanieApi {
   DyhanieApi._();
   static final DyhanieApi instance = DyhanieApi._();
 
   /// Пока один URL; позже — список и выбор по RTT.
-  static const String defaultWsUrl = 'ws://82.24.110.215:8787';
+  static const String defaultWsUrl = 'wss://signal.dyhanie.su';
 
   WebSocketChannel? _ch;
   StreamSubscription? _sub;
@@ -193,4 +193,72 @@ class DyhanieApi {
     final r = await request('msg.ackRead', payload: {'msg_id': msgId});
     if (r['ok'] != true) throw Exception(r['error']?['code'] ?? 'ACK_FAIL');
   }
+
+  // ---- contacts ----
+
+  Future<void> contactInvite(String toUsername) async {
+    final r = await request(
+      'contact.invite',
+      payload: {'to': toUsername},
+    );
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'INVITE_FAIL');
+    }
+  }
+
+  Future<void> contactAccept(String fromUsername) async {
+    final r = await request(
+      'contact.accept',
+      payload: {'from': fromUsername},
+    );
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'ACCEPT_FAIL');
+    }
+  }
+
+  Future<void> contactDecline(String fromUsername) async {
+    final r = await request(
+      'contact.decline',
+      payload: {'from': fromUsername},
+    );
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'DECLINE_FAIL');
+    }
+  }
+
+  Future<void> contactCancel(String toUsername) async {
+    final r = await request(
+      'contact.cancel',
+      payload: {'to': toUsername},
+    );
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'CANCEL_FAIL');
+    }
+  }
+ 
+  Future<Map<String, dynamic>> contactInvitesList() async {
+    final r = await request('contact.invites_list');
+    if (r['ok'] != true) {
+      return {'incoming': <Map>[], 'outgoing': <Map>[], 'badge': 0};
+    }
+    final payload = r['payload'];
+    if (payload is! Map) {
+      return {'incoming': <Map>[], 'outgoing': <Map>[], 'badge': 0};
+    }
+    final incoming = (payload['incoming'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final outgoing = (payload['outgoing'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final badge = payload['badge'] is int
+        ? payload['badge'] as int
+        : incoming.length;
+    return {
+      'incoming': incoming,
+      'outgoing': outgoing,
+      'badge': badge,
+    };
+  }
+  
 }

@@ -1,0 +1,29 @@
+Analyzing dyhanie...
+
+  error - lib/screens/chat_screen.dart:5:8 - Target of URI doesn't exist: 'package:firebase_database/firebase_database.dart'. Try creating the file referenced by the URI, or try using a URI for a file that does exist. - uri_does_not_exist
+  error - lib/screens/chat_screen.dart:41:15 - Undefined name 'FirebaseDatabase'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib/services/chat_wipe_service.dart:4:8 - Target of URI doesn't exist: 'package:firebase_database/firebase_database.dart'. Try creating the file referenced by the URI, or try using a URI for a file that does exist. - uri_does_not_exist
+  error - lib/services/chat_wipe_service.dart:10:9 - Undefined class 'DatabaseReference'. Try changing the name to the name of an existing class, or creating a class with the name 'DatabaseReference'. - undefined_class
+  error - lib/services/chat_wipe_service.dart:10:33 - Undefined name 'FirebaseDatabase'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib/services/p2p_service.dart:2:8 - Target of URI doesn't exist: 'package:firebase_database/firebase_database.dart'. Try creating the file referenced by the URI, or try using a URI for a file that does exist. - uri_does_not_exist
+  error - lib/services/p2p_service.dart:11:9 - Undefined class 'DatabaseReference'. Try changing the name to the name of an existing class, or creating a class with the name 'DatabaseReference'. - undefined_class
+  error - lib/services/p2p_service.dart:11:33 - Undefined name 'FirebaseDatabase'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib/services/p2p_service.dart:37:3 - Undefined class 'DatabaseReference'. Try changing the name to the name of an existing class, or creating a class with the name 'DatabaseReference'. - undefined_class
+  error - lib/services/p2p_service.dart:40:3 - Undefined class 'DatabaseReference'. Try changing the name to the name of an existing class, or creating a class with the name 'DatabaseReference'. - undefined_class
+warning - lib/services/p2p_service.dart:120:24 - The operand can't be 'null', so the condition is always 'true'. Remove the condition. - unnecessary_null_comparison
+warning - lib/services/p2p_service.dart:120:47 - The '!' will have no effect because the receiver can't be null. Try removing the '!' operator. - unnecessary_non_null_assertion
+warning - lib/services/p2p_service.dart:121:44 - The '!' will have no effect because the receiver can't be null. Try removing the '!' operator. - unnecessary_non_null_assertion
+   info - lib/screens/auto_lock_settings_screen.dart:112:13 - 'groupValue' is deprecated and shouldn't be used. Use a RadioGroup ancestor to manage group value instead. This feature was deprecated after v3.32.0-0.0.pre. Try replacing the use of the deprecated member with the replacement. - deprecated_member_use
+   info - lib/screens/auto_lock_settings_screen.dart:125:13 - 'onChanged' is deprecated and shouldn't be used. Use RadioGroup to handle value change instead. This feature was deprecated after v3.32.0-0.0.pre. Try replacing the use of the deprecated member with the replacement. - deprecated_member_use
+   info - lib/screens/auto_lock_settings_screen.dart:135:13 - 'groupValue' is deprecated and shouldn't be used. Use a RadioGroup ancestor to manage group value instead. This feature was deprecated after v3.32.0-0.0.pre. Try replacing the use of the deprecated member with the replacement. - deprecated_member_use
+   info - lib/screens/auto_lock_settings_screen.dart:148:13 - 'onChanged' is deprecated and shouldn't be used. Use RadioGroup to handle value change instead. This feature was deprecated after v3.32.0-0.0.pre. Try replacing the use of the deprecated member with the replacement. - deprecated_member_use
+   info - lib/screens/chat_screen.dart:5:8 - The imported package 'firebase_database' isn't a dependency of the importing package. Try adding a dependency for 'firebase_database' in the 'pubspec.yaml' file. - depend_on_referenced_packages
+   info - lib/screens/chat_screen.dart:858:28 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/chat_screen.dart:1338:36 - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext. - use_build_context_synchronously
+   info - lib/screens/splash_screen.dart:48:9 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/splash_screen.dart:66:9 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/splash_screen.dart:74:9 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/services/chat_wipe_service.dart:4:8 - The imported package 'firebase_database' isn't a dependency of the importing package. Try adding a dependency for 'firebase_database' in the 'pubspec.yaml' file. - depend_on_referenced_packages
+   info - lib/services/p2p_service.dart:2:8 - The imported package 'firebase_database' isn't a dependency of the importing package. Try adding a dependency for 'firebase_database' in the 'pubspec.yaml' file. - depend_on_referenced_packages
+
+25 issues found.

@@ -1,4 +1,3 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/splash_screen.dart';
@@ -14,17 +13,6 @@ import 'services/webrtc_ice.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyDUU45D-9Grs6uhD3FaqnEupc-j_lScp40",
-      authDomain: "dyhanie-19961.firebaseapp.com",
-      databaseURL: "https://dyhanie-19961-default-rtdb.firebaseio.com",
-      projectId: "dyhanie-19961",
-      storageBucket: "dyhanie-19961.firebasestorage.app",
-      messagingSenderId: "220279979423",
-      appId: "1:220279979423:web:1ce259ea4fbd6f372511aa",
-    ),
-  );
 
   await LocaleController.instance.init();
   await FontController.instance.init();

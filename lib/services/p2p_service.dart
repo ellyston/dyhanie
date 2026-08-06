@@ -1,6 +1,8 @@
 import 'dart:async';
-import 'package:firebase_database/firebase_database.dart';
+
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+
+import 'dyhanie_api.dart';
 import 'webrtc_ice.dart';
 
 class P2PService {
@@ -8,7 +10,6 @@ class P2PService {
   final String username;
   final String otherUser;
 
-  final DatabaseReference _db = FirebaseDatabase.instance.ref();
   RTCPeerConnection? _pc;
   RTCDataChannel? _channel;
 
@@ -18,13 +19,13 @@ class P2PService {
   final _statusController = StreamController<String>.broadcast();
   Stream<String> get status => _statusController.stream;
 
-  StreamSubscription? _sdpSub;
-  StreamSubscription? _candSub;
+  StreamSubscription? _signalSub;
 
   bool _isOfferer = false;
   bool _closed = false;
   bool _remoteSet = false;
   bool _opened = false;
+  bool _offerHandled = false;
 
   final List<RTCIceCandidate> _pendingCandidates = [];
 
@@ -34,26 +35,13 @@ class P2PService {
     required this.otherUser,
   });
 
-  DatabaseReference get _myRef =>
-      _db.child('rooms').child(roomCode).child('webrtc').child(username);
-
-  DatabaseReference get _otherRef =>
-      _db.child('rooms').child(roomCode).child('webrtc').child(otherUser);
-
   Future<void> connect() async {
     _isOfferer = username.compareTo(otherUser) < 0;
     _statusController.add('connecting');
 
-    try {
-      await _myRef.remove();
-    } catch (_) {}
-    
     await WebRtcIce.load();
     _pc = await createPeerConnection(WebRtcIce.config);
-   
 
-
-    // Negotiated DataChannel — создаём с обеих сторон с одним id
     _channel = await _pc!.createDataChannel(
       'chat',
       RTCDataChannelInit()
@@ -66,8 +54,7 @@ class P2PService {
     _pc!.onIceCandidate = (candidate) {
       if (_closed) return;
       if (candidate.candidate == null || candidate.candidate!.isEmpty) return;
-
-      _myRef.child('candidates').push().set({
+      _sendSignal('candidate', {
         'candidate': candidate.candidate,
         'sdpMid': candidate.sdpMid,
         'sdpMLineIndex': candidate.sdpMLineIndex,
@@ -92,11 +79,14 @@ class P2PService {
       }
     };
 
+    _signalSub = DyhanieApi.instance.events.listen(_onSignalEvent);
+
     if (_isOfferer) {
       await Future.delayed(const Duration(milliseconds: 800));
+      if (_closed || _pc == null) return;
       final offer = await _pc!.createOffer();
       await _pc!.setLocalDescription(offer);
-      await _myRef.child('sdp').set({
+      await _sendSignal('offer', {
         'type': offer.type,
         'sdp': offer.sdp,
       });
@@ -104,9 +94,102 @@ class P2PService {
     } else {
       _statusController.add('waiting_offer');
     }
+  }
 
-    _listenOtherSdp();
-    _listenOtherCandidates();
+  Future<void> _sendSignal(String kind, dynamic data) async {
+    try {
+      await DyhanieApi.instance.signal(
+        room: roomCode,
+        to: otherUser,
+        kind: kind,
+        data: data,
+      );
+    } catch (e) {
+      _statusController.add('signal_err:$e');
+    }
+  }
+
+  void _onSignalEvent(Map<String, dynamic> msg) {
+    if (_closed || _pc == null) return;
+    if (msg['type']?.toString() != 'signal') return;
+
+    final p = msg['payload'];
+    if (p is! Map) return;
+
+    final room = p['room']?.toString();
+    final from = p['from']?.toString();
+    final kind = p['kind']?.toString();
+    if (room != roomCode || from != otherUser) return;
+
+    final data = p['data'];
+    if (kind == 'offer' || kind == 'answer') {
+      _handleSdp(kind!, data);
+    } else if (kind == 'candidate') {
+      _handleCandidate(data);
+    }
+  }
+
+  Future<void> _handleSdp(String kind, dynamic data) async {
+    if (_pc == null || data is! Map) return;
+    if (kind == 'offer' && _offerHandled) return;
+
+    try {
+      final type = data['type']?.toString() ?? kind;
+      final sdp = data['sdp']?.toString();
+      if (sdp == null || sdp.isEmpty) return;
+
+      await _pc!.setRemoteDescription(RTCSessionDescription(sdp, type));
+      _remoteSet = true;
+      if (kind == 'offer') _offerHandled = true;
+      _statusController.add('remote_set');
+
+      for (final c in _pendingCandidates) {
+        try {
+          await _pc!.addCandidate(c);
+        } catch (_) {}
+      }
+      _pendingCandidates.clear();
+
+      if (!_isOfferer && kind == 'offer') {
+        final answer = await _pc!.createAnswer();
+        await _pc!.setLocalDescription(answer);
+        await _sendSignal('answer', {
+          'type': answer.type,
+          'sdp': answer.sdp,
+        });
+        _statusController.add('answer_sent');
+      }
+    } catch (e) {
+      _statusController.add('sdp_error: $e');
+    }
+  }
+
+  Future<void> _handleCandidate(dynamic data) async {
+    if (_pc == null || data is! Map) return;
+    try {
+      final candStr = data['candidate']?.toString();
+      final sdpMid = data['sdpMid']?.toString();
+      int? sdpMLineIndex;
+      final raw = data['sdpMLineIndex'];
+      if (raw is int) {
+        sdpMLineIndex = raw;
+      } else if (raw is double) {
+        sdpMLineIndex = raw.toInt();
+      } else if (raw != null) {
+        sdpMLineIndex = int.tryParse(raw.toString());
+      }
+      if (candStr == null || candStr.isEmpty) return;
+
+      final candidate = RTCIceCandidate(candStr, sdpMid, sdpMLineIndex);
+      if (!_remoteSet) {
+        _pendingCandidates.add(candidate);
+        return;
+      }
+      await _pc!.addCandidate(candidate);
+      _statusController.add('cand_added');
+    } catch (e) {
+      _statusController.add('cand_error: $e');
+    }
   }
 
   void _markOpen() {
@@ -121,91 +204,12 @@ class P2PService {
         _messageController.add(message.text!);
       }
     };
-
     channel.onDataChannelState = (state) {
       _statusController.add('dc:$state');
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
         _markOpen();
       }
     };
-  }
-
-  void _listenOtherSdp() {
-    _sdpSub = _otherRef.child('sdp').onValue.listen((event) async {
-      if (_closed || _pc == null) return;
-      if (event.snapshot.value == null) return;
-      if (_remoteSet) return;
-
-      try {
-        final sdpMap = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-        final type = sdpMap['type']?.toString();
-        final sdp = sdpMap['sdp']?.toString();
-        if (type == null || sdp == null) return;
-
-        await _pc!.setRemoteDescription(RTCSessionDescription(sdp, type));
-        _remoteSet = true;
-        _statusController.add('remote_set');
-
-        for (final c in _pendingCandidates) {
-          try {
-            await _pc!.addCandidate(c);
-          } catch (_) {}
-        }
-        _pendingCandidates.clear();
-        _statusController.add('pending_flushed');
-
-        if (!_isOfferer && type == 'offer') {
-          final answer = await _pc!.createAnswer();
-          await _pc!.setLocalDescription(answer);
-          await _myRef.child('sdp').set({
-            'type': answer.type,
-            'sdp': answer.sdp,
-          });
-          _statusController.add('answer_sent');
-        }
-      } catch (e) {
-        _statusController.add('sdp_error: $e');
-      }
-    });
-  }
-
-  void _listenOtherCandidates() {
-    _candSub = _otherRef.child('candidates').onChildAdded.listen((event) async {
-      if (_closed || _pc == null) return;
-      if (event.snapshot.value == null) return;
-
-      try {
-        final c = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-
-        final candStr = c['candidate']?.toString();
-        final sdpMid = c['sdpMid']?.toString();
-
-        int? sdpMLineIndex;
-        final raw = c['sdpMLineIndex'];
-        if (raw is int) {
-          sdpMLineIndex = raw;
-        } else if (raw is double) {
-          sdpMLineIndex = raw.toInt();
-        } else if (raw != null) {
-          sdpMLineIndex = int.tryParse(raw.toString());
-        }
-
-        if (candStr == null || candStr.isEmpty) return;
-
-        final candidate = RTCIceCandidate(candStr, sdpMid, sdpMLineIndex);
-
-        if (!_remoteSet) {
-          _pendingCandidates.add(candidate);
-          _statusController.add('cand_queued');
-          return;
-        }
-
-        await _pc!.addCandidate(candidate);
-        _statusController.add('cand_added');
-      } catch (e) {
-        _statusController.add('cand_error: $e');
-      }
-    });
   }
 
   void send(String text) {
@@ -222,22 +226,14 @@ class P2PService {
 
   Future<void> dispose() async {
     _closed = true;
-
-    await _sdpSub?.cancel();
-    await _candSub?.cancel();
-
+    await _signalSub?.cancel();
+    _signalSub = null;
     try {
       await _channel?.close();
     } catch (_) {}
-
     try {
       await _pc?.close();
     } catch (_) {}
-
-    try {
-      await _myRef.remove();
-    } catch (_) {}
-
     await _messageController.close();
     await _statusController.close();
   }

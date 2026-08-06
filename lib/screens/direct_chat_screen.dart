@@ -103,21 +103,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       onPull: (_) => _flushOutboxIfNeeded(),
     );
 
-    _mySignalSub = _signals.listenMySignals(
-      myUsername: widget.myUsername,
-      onSignal: (id, data) {
-        if (id != dialogId) return;
-        if (data['type']?.toString() != 'delivered_ack') return;
-        if (!mounted) return;
-        setState(() {
-          for (final m in messages) {
-            m['pending'] = false;
-            m['delivered'] = true;
-          }
-          statusLine = 'прочитано';
-        });
-      },
-    );
+
 
     await _requestPullOrComeOnline();
     await _refreshPendingSignal();

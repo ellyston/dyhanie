@@ -1,10 +1,9 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'security_service.dart';
 
 /// Полная очистка следов приложения.
-/// Сюда позже добавим: Firebase, файлы на диске, Android uninstall intent и т.д.
+
 class WipeService {
   final SecurityService _security = SecurityService();
 
@@ -26,8 +25,7 @@ class WipeService {
     // 1) Локальные данные (SharedPreferences, outbox, PIN, профиль...)
     await _security.wipeEverything();
 
-    // 2) Заготовка: очистка Firebase presence / dialogs этого пользователя
-    await _wipeFirebaseTraces();
+    
 
     // 3) Заготовка: удаление локальных файлов (когда появится path_provider)
     await _wipeLocalFiles();
@@ -45,13 +43,6 @@ class WipeService {
     );
   }
 
-  /// TODO: удалить presence/dialogs/сигналы пользователя в Firebase
-  Future<void> _wipeFirebaseTraces() async {
-    // Позже:
-    // - dialogs, где members содержит username
-    // - rooms/*/presence/username
-    // Сейчас намеренно пусто — чтобы не затронуть чужие комнаты ошибочно.
-  }
 
   /// TODO: временные картинки, кэш, download folder
   Future<void> _wipeLocalFiles() async {

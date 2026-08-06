@@ -1,133 +1,51 @@
 import 'dart:async';
 
-import 'package:firebase_database/firebase_database.dart';
 
-import 'outbox_service.dart';
-
+/// Заглушка: dialog-сигналы больше не через Firebase.
 class DialogSignalService {
-  final DatabaseReference _db = FirebaseDatabase.instance.ref();
-
-  DatabaseReference _dialogRef(String dialogId) =>
-      _db.child('dialogs').child(dialogId);
-
   Future<void> setPendingIn({
     required String from,
     required String to,
     required int count,
-  }) async {
-    final dialogId = OutboxService.dialogIdFor(from, to);
-    final ref = _dialogRef(dialogId);
-
-    await ref.child('members').update({
-      from: true,
-      to: true,
-    });
-
-    await ref.child('signal').child(to).set({
-      'type': 'pending_in',
-      'from': from,
-      'count': count,
-      'ts': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
+  }) async {}
 
   Future<void> clearPendingIn({
     required String from,
     required String to,
-  }) async {
-    final dialogId = OutboxService.dialogIdFor(from, to);
-    await _dialogRef(dialogId).child('signal').child(to).remove();
-  }
+  }) async {}
 
   Future<void> requestPull({
     required String myUsername,
     required String otherUser,
-  }) async {
-    final dialogId = OutboxService.dialogIdFor(myUsername, otherUser);
-    await _dialogRef(dialogId).child('pull').child(myUsername).set({
-      'ts': DateTime.now().millisecondsSinceEpoch,
-      'from': myUsername,
-    });
-  }
+  }) async {}
 
   Future<void> clearPull({
     required String myUsername,
     required String otherUser,
-  }) async {
-    final dialogId = OutboxService.dialogIdFor(myUsername, otherUser);
-    await _dialogRef(dialogId).child('pull').child(myUsername).remove();
-  }
+  }) async {}
 
   Future<void> setComeOnline({
     required String from,
     required String to,
-  }) async {
-    final dialogId = OutboxService.dialogIdFor(from, to);
-    final ref = _dialogRef(dialogId);
-
-    await ref.child('members').update({
-      from: true,
-      to: true,
-    });
-
-    await ref.child('signal').child(to).set({
-      'type': 'come_online',
-      'from': from,
-      'ts': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
+  }) async {}
 
   Future<void> clearComeOnline({
     required String forUser,
     required String otherUser,
-  }) async {
-    final dialogId = OutboxService.dialogIdFor(forUser, otherUser);
-    final snap = await _dialogRef(dialogId).child('signal').child(forUser).get();
-    if (snap.value is Map) {
-      final type = (snap.value as Map)['type']?.toString();
-      if (type == 'come_online') {
-        await _dialogRef(dialogId).child('signal').child(forUser).remove();
-      }
-    }
-  }
+  }) async {}
 
   Future<void> setDeliveredAck({
     required String from,
     required String to,
-  }) async {
-    final dialogId = OutboxService.dialogIdFor(from, to);
-    await _dialogRef(dialogId).child('signal').child(to).set({
-      'type': 'delivered_ack',
-      'from': from,
-      'ts': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
+  }) async {}
 
-  /// Полный снимок сигналов пользователя (бейджи сбрасываются при удалении signal)
   StreamSubscription listenMySignals({
     required String myUsername,
-    required void Function(Map<String, Map<String, dynamic>> signalsByDialog) onSignals,
+    required void Function(Map<String, Map<String, dynamic>> signalsByDialog)
+        onSignals,
   }) {
-    return _db.child('dialogs').onValue.listen((event) {
-      final result = <String, Map<String, dynamic>>{};
-
-      if (event.snapshot.value is Map) {
-        final root = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-        root.forEach((dialogId, dialogValue) {
-          if (dialogValue is! Map) return;
-          final dialog = Map<dynamic, dynamic>.from(dialogValue);
-          final signalNode = dialog['signal'];
-          if (signalNode is! Map) return;
-          final signals = Map<dynamic, dynamic>.from(signalNode);
-          final mySignal = signals[myUsername];
-          if (mySignal is Map) {
-            result[dialogId.toString()] = Map<String, dynamic>.from(mySignal);
-          }
-        });
-      }
-
-      onSignals(result);
-    });
+    onSignals({});
+    return const Stream<void>.empty().listen((_) {});
   }
 
   StreamSubscription listenPull({
@@ -135,71 +53,35 @@ class DialogSignalService {
     required String otherUser,
     required void Function(Map data) onPull,
   }) {
-    return _dialogRef(dialogId).child('pull').child(otherUser).onValue.listen((event) {
-      if (event.snapshot.value == null) return;
-      if (event.snapshot.value is Map) {
-        onPull(Map<String, dynamic>.from(event.snapshot.value as Map));
-      }
-    });
+    return const Stream<void>.empty().listen((_) {});
   }
 
   Future<void> publishDelivery({
     required String dialogId,
     required String toUser,
     required List<Map<String, dynamic>> messages,
-  }) async {
-    final ref = _dialogRef(dialogId).child('delivery').child(toUser);
-    await ref.set({
-      'ts': DateTime.now().millisecondsSinceEpoch,
-      'messages': messages,
-    });
-  }
+  }) async {}
 
   StreamSubscription listenDelivery({
     required String dialogId,
     required String myUsername,
     required void Function(List<Map<String, dynamic>> messages) onMessages,
   }) {
-    return _dialogRef(dialogId)
-        .child('delivery')
-        .child(myUsername)
-        .onValue
-        .listen((event) async {
-      if (event.snapshot.value == null) return;
-      if (event.snapshot.value is! Map) return;
-
-      final data = Map<String, dynamic>.from(event.snapshot.value as Map);
-      final raw = data['messages'];
-      if (raw is List) {
-        final list = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        onMessages(list);
-      }
-
-      await event.snapshot.ref.remove();
-    });
+    return const Stream<void>.empty().listen((_) {});
   }
 
   Future<void> setDialogPresence({
     required String dialogId,
     required String username,
     required bool online,
-  }) async {
-    final ref = _dialogRef(dialogId).child('presence').child(username);
-    if (online) {
-      await ref.set(true);
-      ref.onDisconnect().remove();
-    } else {
-      await ref.remove();
-    }
-  }
+  }) async {}
 
   StreamSubscription listenDialogPresence({
     required String dialogId,
     required String otherUser,
     required void Function(bool online) onChanged,
   }) {
-    return _dialogRef(dialogId).child('presence').child(otherUser).onValue.listen((event) {
-      onChanged(event.snapshot.value == true);
-    });
+    onChanged(false);
+    return const Stream<void>.empty().listen((_) {});
   }
 }

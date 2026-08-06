@@ -1,31 +1,25 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:firebase_database/firebase_database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dyhanie_api.dart';
+
 class ContactInviteService {
-  final DatabaseReference _db = FirebaseDatabase.instance.ref();
-
-  DatabaseReference _invitesFor(String username) =>
-      _db.child('contact_invites').child(username.toLowerCase());
-
-  DatabaseReference _outgoingFor(String username) =>
-      _db.child('contact_invites_out').child(username.toLowerCase());
-
-  /// Зарегистрировать ник (вызывать при создании/сохранении профиля)
   Future<void> registerUsername(String username) async {
-    final u = username.toLowerCase().trim();
-    if (u.isEmpty) return;
-    await _db.child('usernames').child(u).set({
-      'updatedAt': DateTime.now().millisecondsSinceEpoch,
-    });
+    // регистрация через CreateProfile + DyhanieApi
   }
 
   Future<bool> usernameExists(String username) async {
     final u = username.toLowerCase().trim();
-    final snap = await _db.child('usernames').child(u).get();
-    return snap.exists;
+    if (u.isEmpty) return false;
+    try {
+      if (!DyhanieApi.instance.isConnected) {
+        await DyhanieApi.instance.connect();
+      }
+      return await DyhanieApi.instance.usernameExists(u);
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<List<String>> getLocalContacts() async {
@@ -43,7 +37,6 @@ class ContactInviteService {
     }
   }
 
-  // —— блок ——
   Future<List<String>> getBlocked() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getStringList('blocked_users') ?? [];
@@ -57,13 +50,9 @@ class ContactInviteService {
       blocked.add(u);
       await prefs.setStringList('blocked_users', blocked);
     }
-    // убрать из контактов
     final contacts = prefs.getStringList('contacts') ?? [];
     contacts.remove(u);
     await prefs.setStringList('contacts', contacts);
-
-    // отклонить входящее приглашение от него, если есть
-    // (myUsername передадим снаружи при необходимости)
   }
 
   Future<void> unblockUser(String username) async {
@@ -78,103 +67,103 @@ class ContactInviteService {
     return blocked.contains(username.toLowerCase());
   }
 
-  /// Результат глобального поиска / приглашения
   Future<String> sendInvite({
     required String fromUsername,
     required String toUsername,
   }) async {
     final from = fromUsername.toLowerCase().trim();
     final to = toUsername.toLowerCase().trim();
-
     if (from.isEmpty || to.isEmpty) return 'Пустой username';
     if (from == to) return 'Это вы';
-
     final contacts = await getLocalContacts();
     if (contacts.contains(to)) return 'Уже в контактах';
-
     if (await isBlocked(to)) return 'Пользователь в чёрном списке';
 
-    final exists = await usernameExists(to);
-    if (!exists) return 'Пользователь не найден';
-
-    await _invitesFor(to).child(from).set({
-      'from': from,
-      'ts': DateTime.now().millisecondsSinceEpoch,
-    });
-
-    // исходящее — чтобы можно было отменить
-    await _outgoingFor(from).child(to).set({
-      'to': to,
-      'ts': DateTime.now().millisecondsSinceEpoch,
-    });
-
-    await registerUsername(from);
-    return 'ok';
+    try {
+      if (!DyhanieApi.instance.isConnected) {
+        await DyhanieApi.instance.connect();
+        await DyhanieApi.instance.sessionBind(from);
+      }
+      final exists = await DyhanieApi.instance.usernameExists(to);
+      if (!exists) return 'Пользователь не найден';
+      await DyhanieApi.instance.contactInvite(to);
+      return 'ok';
+    } catch (e) {
+      final s = e.toString();
+      if (s.contains('NOT_FOUND')) return 'Пользователь не найден';
+      return 'Ошибка: $e';
+    }
   }
 
   Future<void> cancelOutgoing({
     required String fromUsername,
     required String toUsername,
   }) async {
-    final from = fromUsername.toLowerCase();
-    final to = toUsername.toLowerCase();
-    await _invitesFor(to).child(from).remove();
-    await _outgoingFor(from).child(to).remove();
+    try {
+      await DyhanieApi.instance.contactCancel(toUsername.toLowerCase());
+    } catch (_) {}
   }
 
   Future<void> acceptInvite({
     required String myUsername,
     required String fromUsername,
   }) async {
-    final me = myUsername.toLowerCase();
     final from = fromUsername.toLowerCase();
-
     if (await isBlocked(from)) {
-      await declineInvite(myUsername: me, fromUsername: from);
+      await declineInvite(myUsername: myUsername, fromUsername: from);
       return;
     }
-
+    await DyhanieApi.instance.contactAccept(from);
     await addLocalContact(from);
-    await _invitesFor(me).child(from).remove();
-    await _outgoingFor(from).child(me).remove();
-
-    await _db.child('contact_accepted').child(from).child(me).set({
-      'by': me,
-      'ts': DateTime.now().millisecondsSinceEpoch,
-    });
   }
 
   Future<void> declineInvite({
     required String myUsername,
     required String fromUsername,
   }) async {
-    final me = myUsername.toLowerCase();
-    final from = fromUsername.toLowerCase();
-    await _invitesFor(me).child(from).remove();
-    await _outgoingFor(from).child(me).remove();
+    try {
+      await DyhanieApi.instance.contactDecline(fromUsername.toLowerCase());
+    } catch (_) {}
+  }
+
+  /// Список с сервера: incoming / outgoing / badge
+  Future<Map<String, dynamic>> fetchInvites() async {
+    try {
+      return await DyhanieApi.instance.contactInvitesList();
+    } catch (_) {
+      return {
+        'incoming': <Map<String, dynamic>>[],
+        'outgoing': <Map<String, dynamic>>[],
+        'badge': 0,
+      };
+    }
   }
 
   StreamSubscription listenInvites({
     required String myUsername,
     required void Function(List<Map<String, dynamic>> invites) onData,
   }) {
-    return _invitesFor(myUsername).onValue.listen((event) {
-      if (event.snapshot.value == null) {
-        onData([]);
-        return;
+    Future(() async {
+      final list = await fetchInvites();
+      final incoming = (list['incoming'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          [];
+      onData(incoming);
+    });
+
+    return DyhanieApi.instance.events.listen((m) async {
+      final t = m['type']?.toString();
+      if (t == 'contact.invite_incoming' ||
+          t == 'contact.accepted' ||
+          t == 'contact.declined') {
+        final list = await fetchInvites();
+        final incoming = (list['incoming'] as List?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            [];
+        onData(incoming);
       }
-      final map = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      final list = <Map<String, dynamic>>[];
-      map.forEach((key, value) {
-        if (value is Map) {
-          final m = Map<String, dynamic>.from(value);
-          m['from'] = m['from']?.toString() ?? key.toString();
-          list.add(m);
-        } else {
-          list.add({'from': key.toString()});
-        }
-      });
-      onData(list);
     });
   }
 
@@ -182,23 +171,26 @@ class ContactInviteService {
     required String myUsername,
     required void Function(List<Map<String, dynamic>> list) onData,
   }) {
-    return _outgoingFor(myUsername).onValue.listen((event) {
-      if (event.snapshot.value == null) {
-        onData([]);
-        return;
+    Future(() async {
+      final list = await fetchInvites();
+      final outgoing = (list['outgoing'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          [];
+      onData(outgoing);
+    });
+    return DyhanieApi.instance.events.listen((m) async {
+      final t = m['type']?.toString();
+      if (t == 'contact.invite_incoming' ||
+          t == 'contact.accepted' ||
+          t == 'contact.declined') {
+        final list = await fetchInvites();
+        final outgoing = (list['outgoing'] as List?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            [];
+        onData(outgoing);
       }
-      final map = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      final list = <Map<String, dynamic>>[];
-      map.forEach((key, value) {
-        if (value is Map) {
-          final m = Map<String, dynamic>.from(value);
-          m['to'] = m['to']?.toString() ?? key.toString();
-          list.add(m);
-        } else {
-          list.add({'to': key.toString()});
-        }
-      });
-      onData(list);
     });
   }
 
@@ -206,19 +198,13 @@ class ContactInviteService {
     required String myUsername,
     required void Function(String byUser) onAccepted,
   }) {
-    return _db
-        .child('contact_accepted')
-        .child(myUsername.toLowerCase())
-        .onChildAdded
-        .listen((event) async {
-      final by = event.snapshot.key;
-      if (by == null) return;
-      if (await isBlocked(by)) {
-        await event.snapshot.ref.remove();
-        return;
-      }
+    return DyhanieApi.instance.events.listen((m) async {
+      if (m['type']?.toString() != 'contact.accepted') return;
+      final p = m['payload'];
+      if (p is! Map) return;
+      final by = p['by']?.toString();
+      if (by == null || by.isEmpty) return;
       await addLocalContact(by);
-      await event.snapshot.ref.remove();
       onAccepted(by);
     });
   }

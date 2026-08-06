@@ -2,15 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/server_relay_mode.dart';
 import '../services/chat_history_service.dart';
 import '../services/chat_wipe_service.dart';
 import '../services/dialog_signal_service.dart';
+import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/p2p_service.dart';
 import '../widgets/chat_app_bar.dart';
@@ -18,8 +19,6 @@ import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
-import '../services/font_service.dart';
-import '../models/server_relay_mode.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomCode;
@@ -38,7 +37,6 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _searchCtrl = TextEditingController();
-  final _db = FirebaseDatabase.instance.ref();
   final _picker = ImagePicker();
   final _scroll = ScrollController();
   final _dialogSignals = DialogSignalService();
@@ -50,14 +48,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _remaining = <String, int>{};
   final _knownServerKeys = <String>{};
 
-  StreamSubscription? _typingSub;
-  StreamSubscription? _saveSub;
-  StreamSubscription? _presenceSub;
-  StreamSubscription? _callSub;
-  StreamSubscription? _msgSub;
-  StreamSubscription? _delSub;
-  StreamSubscription? _pinSub;
-  StreamSubscription? _readSub;
   StreamSubscription? _p2pMsgSub;
   StreamSubscription? _p2pStatusSub;
 
@@ -71,7 +61,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool get blockServerMessages => serverRelayMode.isBlocked;
 
   int selectedTime = 0;
-  bool wipeOnExit = false; // зелёный = сохранять
+  bool wipeOnExit = false;
 
   double messageFontSize = 16;
   Uint8List? backgroundBytes;
@@ -83,7 +73,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? saveRequestedBy;
   String? otherUser;
   bool otherOnline = false;
-  bool _incomingDialogShown = false;
   bool showSearch = false;
   String searchQuery = '';
   Map<String, dynamic>? pinned;
@@ -92,11 +81,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool callInProgress = false;
   String callStatusBanner = '';
 
-  /// true = красный: при выходе чистим сервер + P2P
-  /// false = зелёный: диалог сохраняется
-
   final timeOptions = [0, 5, 10, 15, 30, 60, 120, 300, 600];
-  Timer? _typingThrottle;
 
   bool _looksLikeDirectDialog(String code) {
     return code.contains('_') && code.length > 6;
@@ -126,7 +111,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         mine = base64Decode(myRaw);
       } catch (_) {}
     }
-
 
     Uint8List? otherBytes;
     final other = otherUser ?? _otherFromRoomCode();
@@ -174,24 +158,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await prefs.setDouble('${p}font', messageFontSize);
   }
 
-
   Future<void> _clearMyIncomingSignal() async {
     if (!_looksLikeDirectDialog(widget.roomCode)) return;
     final other = _otherFromRoomCode();
     if (other == null) return;
     try {
-      await _dialogSignals.clearPendingIn(
-        from: other,
-        to: widget.username,
-      );
+      await _dialogSignals.clearPendingIn(from: other, to: widget.username);
     } catch (_) {}
   }
 
   Future<void> _loadSavedHistory() async {
     try {
       final saved = await _history.load(widget.roomCode);
-      if (!mounted) return;
-      if (saved.isEmpty) return;
+      if (!mounted || saved.isEmpty) return;
 
       setState(() {
         final existingKeys = messages.map((m) => m['key']?.toString()).toSet();
@@ -223,6 +202,27 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  Future<void> _bootstrapPeer() async {
+    final other = _otherFromRoomCode();
+    if (other == null || other.isEmpty) return;
+    if (!mounted) return;
+    setState(() {
+      otherUser = other;
+      otherOnline = true;
+    });
+    _updateConnectionMode();
+    await _loadAvatars();
+
+    final prefs = await SharedPreferences.getInstance();
+    final contacts = prefs.getStringList('contacts') ?? [];
+    if (!contacts.contains(other)) {
+      contacts.add(other);
+      await prefs.setStringList('contacts', contacts);
+    }
+    await _startP2P(other);
+    await _clearMyIncomingSignal();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -231,32 +231,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     connectionMode = L.t('no_connection');
     WidgetsBinding.instance.addObserver(this);
     _loadAvatars();
-    _setOnline(true);
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) _setOnline(true);
-    });
-    _listenTyping();
-    _listenSave();
-    _listenPresence();
-    _listenCalls();
-    _listenMessages();
-    _listenDeletes();
-    _listenPin();
-    _listenRead();
-    _controller.addListener(_onTyping);
     _updateConnectionMode();
     _clearMyIncomingSignal();
     Future.delayed(const Duration(milliseconds: 300), _loadSavedHistory);
+    Future.delayed(const Duration(milliseconds: 200), _bootstrapPeer);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _setOnline(true);
       _clearMyIncomingSignal();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      _setOnline(false);
+      if (otherUser != null && _p2p == null) {
+        _startP2P(otherUser!);
+      }
     }
   }
 
@@ -264,72 +251,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final mode = p2pConnected
         ? L.t('p2p_connected')
         : (otherUser != null
-            ? (blockServerMessages 
-              ? L.t('p2p_only_wait') 
-              : L.t('via_server'))
+            ? (blockServerMessages
+                ? L.t('p2p_only_wait')
+                : L.t('via_server'))
             : L.t('no_connection'));
     if (mounted) setState(() => connectionMode = mode);
-  }
-
-  void _setOnline(bool online) {
-    final ref = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('presence')
-        .child(widget.username);
-    if (online) {
-      ref.set(true);
-      ref.onDisconnect().remove();
-    } else {
-      ref.remove();
-    }
-  }
-
-  void _listenPresence() {
-    final roomPresence =
-        _db.child('rooms').child(widget.roomCode).child('presence');
-    roomPresence.child(widget.username).set(true);
-    roomPresence.child(widget.username).onDisconnect().remove();
-
-    _presenceSub = roomPresence.onValue.listen((event) async {
-      if (event.snapshot.value == null) {
-        setState(() {
-          otherUser = null;
-          otherOnline = false;
-        });
-        _updateConnectionMode();
-        return;
-      }
-
-      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      String? other;
-      bool online = false;
-      data.forEach((k, v) {
-        if (k.toString() != widget.username) {
-          other = k.toString();
-          online = v == true;
-        }
-      });
-
-      setState(() {
-        otherUser = other;
-        otherOnline = online;
-      });
-      _updateConnectionMode();
-      _loadAvatars();
-
-      if (other != null) {
-        final name = other!;
-        final prefs = await SharedPreferences.getInstance();
-        final contacts = prefs.getStringList('contacts') ?? [];
-        if (!contacts.contains(name)) {
-          contacts.add(name);
-          await prefs.setStringList('contacts', contacts);
-        }
-        _startP2P(name);
-        await _clearMyIncomingSignal();
-      }
-    });
   }
 
   Future<void> _startP2P(String other) async {
@@ -421,8 +347,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _addIncomingP2P(Map data, String other) {
-    final key =
-        data['key']?.toString() ?? 'p2p_${DateTime.now().millisecondsSinceEpoch}';
+    final key = data['key']?.toString() ??
+        'p2p_${DateTime.now().millisecondsSinceEpoch}';
     final msg = {
       'key': key,
       'text': data['text']?.toString() ?? '',
@@ -440,268 +366,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     HapticFeedback.mediumImpact();
     SystemSound.play(SystemSoundType.click);
     _scrollEnd();
-    _markRead();
     _clearMyIncomingSignal();
-  }
-
-  void _listenMessages() {
-    _msgSub = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('messages')
-        .onChildAdded
-        .listen((event) {
-      if (p2pConnected) return;
-      if (blockServerMessages) return;
-      if (event.snapshot.value == null) return;
-
-      final key = event.snapshot.key ?? '';
-      if (key.isEmpty || _knownServerKeys.contains(key)) return;
-      _knownServerKeys.add(key);
-
-      final data = Map<String, dynamic>.from(event.snapshot.value as Map);
-      data['key'] = key;
-      data['p2p'] = false;
-      if (data['username'] == widget.username) return;
-
-      setState(() => messages = [...messages, data]);
-      if (!isSavedChat && ((data['ttl'] as int?) ?? 0) > 0) _startTimer(data);
-      HapticFeedback.mediumImpact();
-      SystemSound.play(SystemSoundType.click);
-      _scrollEnd();
-      _markRead();
-      _clearMyIncomingSignal();
-    });
-  }
-
-  void _listenDeletes() {
-    _delSub = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('deletes')
-        .onChildAdded
-        .listen((event) {
-      final key = event.snapshot.value?.toString();
-      if (key != null) _removeLocal(key);
-    });
-  }
-
-  void _listenPin() {
-    _pinSub = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('meta')
-        .child('pinned')
-        .onValue
-        .listen((event) {
-      if (event.snapshot.value == null) {
-        setState(() => pinned = null);
-        return;
-      }
-      setState(
-        () => pinned = Map<String, dynamic>.from(event.snapshot.value as Map),
-      );
-    });
-  }
-
-  void _listenRead() {
-    _readSub = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('read')
-        .onValue
-        .listen((event) {
-      if (event.snapshot.value == null) return;
-      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      data.forEach((k, v) {
-        if (k.toString() != widget.username) {
-          setState(
-            () => otherLastRead = v is int ? v : int.tryParse(v.toString()),
-          );
-        }
-      });
-    });
-  }
-
-  void _markRead() {
-    _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('read')
-        .child(widget.username)
-        .set(DateTime.now().millisecondsSinceEpoch);
-  }
-
-  void _listenCalls() {
-    _callSub = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('call')
-        .onValue
-        .listen((event) {
-      if (event.snapshot.value == null) {
-        setState(() {
-          callInProgress = false;
-          callStatusBanner = '';
-        });
-        return;
-      }
-
-      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      final status = data['status']?.toString() ?? '';
-      final to = data['to']?.toString();
-      final from = data['from']?.toString();
-
-      setState(() {
-        callInProgress = status == 'ringing' || status == 'accepted';
-        if (status == 'ringing') {
-          callStatusBanner = from == widget.username
-              ? L.t('calling')
-              : L.t('incoming_call');
-        }
-        if (status == 'accepted') callStatusBanner = L.t('call_in_progress');
-        if (status == 'rejected') callStatusBanner = L.t('call_rejected');
-        if (status == 'ended') callStatusBanner = L.t('call_ended');
-        if (status == 'no_answer') callStatusBanner = L.t('no_answer');
-      });
-
-      if (status == 'ringing' &&
-          to == widget.username &&
-          from != null &&
-          !_incomingDialogShown) {
-        _incomingDialogShown = true;
-        HapticFeedback.heavyImpact();
-        SystemSound.play(SystemSoundType.alert);
-        _showIncomingCall(from);
-      }
-
-      if (status == 'ended' || status == 'rejected' || status == 'no_answer') {
-        _incomingDialogShown = false;
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) setState(() => callStatusBanner = '');
-        });
-      }
-    });
-  }
-
-  void _showIncomingCall(String from) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(
-          L.t('incoming_call'),
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: Text('@$from', style: const TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _db
-                  .child('rooms')
-                  .child(widget.roomCode)
-                  .child('call')
-                  .update({'status': 'rejected'});
-              _incomingDialogShown = false;
-              Navigator.pop(ctx);
-            },
-            child: Text(
-              L.t('decline_call'),
-              style: const TextStyle(color: Colors.redAccent),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              _db
-                  .child('rooms')
-                  .child(widget.roomCode)
-                  .child('call')
-                  .update({'status': 'accepted'});
-              _incomingDialogShown = false;
-              Navigator.pop(ctx);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CallScreen(
-                    roomCode: widget.roomCode,
-                    username: widget.username,
-                    otherUser: from,
-                    isIncoming: true,
-                  ),
-                ),
-              );
-            },
-            child: Text(
-              L.t('accept_call'),
-              style: const TextStyle(color: Colors.greenAccent),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _onTyping() {
-    _typingThrottle?.cancel();
-    _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('typing')
-        .child(widget.username)
-        .set(true);
-    _typingThrottle = Timer(const Duration(milliseconds: 1500), () {
-      _db
-          .child('rooms')
-          .child(widget.roomCode)
-          .child('typing')
-          .child(widget.username)
-          .remove();
-    });
-  }
-
-  void _listenTyping() {
-    _typingSub = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('typing')
-        .onValue
-        .listen((event) {
-      if (event.snapshot.value == null) {
-        setState(() => typingUser = null);
-        return;
-      }
-      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      String? other;
-      data.forEach((k, v) {
-        if (k.toString() != widget.username && v == true) other = k.toString();
-      });
-      setState(() => typingUser = other);
-    });
-  }
-
-  void _listenSave() {
-    _saveSub = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('meta')
-        .onValue
-        .listen((event) {
-      if (event.snapshot.value == null) return;
-      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      final saved = data['saved'] == true;
-      final by = data['saveRequestedBy']?.toString();
-      setState(() {
-        isSavedChat = saved;
-        if (by != null && by != widget.username && !saved) {
-          saveRequestIncoming = true;
-          saveRequestedBy = by;
-        } else {
-          saveRequestIncoming = false;
-          saveRequestedBy = null;
-        }
-      });
-    });
   }
 
   void _startTimer(Map<String, dynamic> msg) {
@@ -739,14 +404,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _timers.remove(key);
     _remaining.remove(key);
     if (mounted) {
-      setState(() => messages = messages.where((m) => m['key'] != key).toList());
+      setState(
+          () => messages = messages.where((m) => m['key'] != key).toList());
     }
   }
 
   void _deleteForBoth(String key) {
     _removeLocal(key);
-    _db.child('rooms').child(widget.roomCode).child('messages').child(key).remove();
-    _db.child('rooms').child(widget.roomCode).child('deletes').push().set(key);
     if (p2pConnected && _p2p != null) {
       _p2p!.send(jsonEncode({'type': 'delete', 'key': key}));
     }
@@ -769,17 +433,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (text.isEmpty && imageB64 == null) return;
 
     final canP2P = p2pConnected && _p2p != null;
-    final canServer = !blockServerMessages;
-    if (!canP2P && !canServer) {
+    if (!canP2P) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(L.t('no_p2p_server_blocked'))),
       );
       return;
     }
 
-    final viaP2P = canP2P;
-    final key =
-        '${viaP2P ? 'p2p' : 'srv'}_${DateTime.now().millisecondsSinceEpoch}';
+    final key = 'p2p_${DateTime.now().millisecondsSinceEpoch}';
     final ts = DateTime.now().millisecondsSinceEpoch;
 
     final msg = {
@@ -788,7 +449,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'username': widget.username,
       'timestamp': ts,
       'ttl': selectedTime,
-      'p2p': viaP2P,
+      'p2p': true,
       'replyText': replyTo?['text'],
       'replyUser': replyTo?['username'],
       'image': imageB64,
@@ -802,7 +463,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!isSavedChat && selectedTime > 0) _startTimer(msg);
     _scrollEnd();
 
-    final payload = {
+    _p2p!.send(jsonEncode({
       'type': 'msg',
       'key': key,
       'text': text,
@@ -811,35 +472,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'replyText': msg['replyText'],
       'replyUser': msg['replyUser'],
       'image': imageB64,
-    };
-
-    if (viaP2P) {
-      _p2p!.send(jsonEncode(payload));
-    } else {
-      final ref =
-          _db.child('rooms').child(widget.roomCode).child('messages').push();
-      _knownServerKeys.add(ref.key ?? key);
-      await ref.set({
-        'text': text,
-        'username': widget.username,
-        'timestamp': ts,
-        'ttl': selectedTime,
-        'p2p': false,
-        'replyText': msg['replyText'],
-        'replyUser': msg['replyUser'],
-        'image': imageB64,
-      });
-    }
+    }));
 
     await _notifyDirectIncoming();
-
     _controller.clear();
-    _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('typing')
-        .child(widget.username)
-        .remove();
     HapticFeedback.lightImpact();
     if (!wipeOnExit) {
       await _history.save(widget.roomCode, messages);
@@ -881,10 +517,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _pinMessage(Map<String, dynamic> msg) {
-    _db.child('rooms').child(widget.roomCode).child('meta').child('pinned').set({
-      'text': msg['text'],
-      'username': msg['username'],
-      'key': msg['key'],
+    setState(() {
+      pinned = {
+        'text': msg['text'],
+        'username': msg['username'],
+        'key': msg['key'],
+      };
     });
   }
 
@@ -898,7 +536,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             ListTile(
               leading: const Icon(Icons.reply, color: Colors.white70),
-              title: Text(L.t('reply'), style: const TextStyle(color: Colors.white)),
+              title:
+                  Text(L.t('reply'), style: const TextStyle(color: Colors.white)),
               onTap: () {
                 setState(() => replyTo = msg);
                 Navigator.pop(ctx);
@@ -917,7 +556,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
             ListTile(
               leading: const Icon(Icons.copy, color: Colors.white70),
-              title: Text(L.t('copy'), style: const TextStyle(color: Colors.white)),
+              title:
+                  Text(L.t('copy'), style: const TextStyle(color: Colors.white)),
               onTap: () {
                 Clipboard.setData(
                   ClipboardData(text: msg['text']?.toString() ?? ''),
@@ -946,7 +586,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// Выход без подтверждающего диалога
   Future<void> _exitRoom() async {
     await _wipe.leavePresence(
       roomCode: widget.roomCode,
@@ -969,13 +608,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await _history.save(widget.roomCode, messages);
     }
 
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    final empty = await _wipe.isRoomEmpty(widget.roomCode);
-    if (wipeOnExit && empty) {
-      await _wipe.removeRoom(widget.roomCode);
-    }
-
     if (!mounted) return;
     Navigator.pop(context);
   }
@@ -983,27 +615,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _startCall() {
     if (otherUser == null) return;
     if (callInProgress) return;
-
-    _db.child('rooms').child(widget.roomCode).child('webrtc').remove();
-
-    _db.child('rooms').child(widget.roomCode).child('call').set({
-      'from': widget.username,
-      'to': otherUser,
-      'status': 'ringing',
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-
-    Future.delayed(const Duration(seconds: 30), () async {
-      final snap =
-          await _db.child('rooms').child(widget.roomCode).child('call').get();
-      if (snap.value is Map && (snap.value as Map)['status'] == 'ringing') {
-        await _db
-            .child('rooms')
-            .child(widget.roomCode)
-            .child('call')
-            .update({'status': 'no_answer'});
-      }
-    });
 
     Navigator.push(
       context,
@@ -1038,9 +649,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
       return;
     }
-    final canP2P = p2pConnected && _p2p != null;
-    final canServer = !blockServerMessages ;
-    if (!canP2P && !canServer) {
+    if (!p2pConnected || _p2p == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(L.t('no_p2p_server_blocked'))),
       );
@@ -1051,43 +660,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final text = m['text']?.toString() ?? '';
       final imageB64 = m['image']?.toString();
       if (text.isEmpty && imageB64 == null) continue;
-      final viaP2P = canP2P;
       final key =
-          '${viaP2P ? 'p2p' : 'srv'}_hist_${DateTime.now().millisecondsSinceEpoch}_$sent';
+          'p2p_hist_${DateTime.now().millisecondsSinceEpoch}_$sent';
       final ts = m['timestamp'] is int
           ? m['timestamp'] as int
           : DateTime.now().millisecondsSinceEpoch;
-      final payload = {
-        'type': 'msg',
-        'key': key,
-        'text': text,
-        'timestamp': ts,
-        'ttl': 0,
-        'replyText': m['replyText'],
-        'replyUser': m['replyUser'],
-        'image': imageB64,
-      };
       try {
-        if (viaP2P) {
-          _p2p!.send(jsonEncode(payload));
-        } else {
-          final ref = _db
-              .child('rooms')
-              .child(widget.roomCode)
-              .child('messages')
-              .push();
-          _knownServerKeys.add(ref.key ?? key);
-          await ref.set({
-            'text': text,
-            'username': widget.username,
-            'timestamp': ts,
-            'ttl': 0,
-            'p2p': false,
-            'replyText': m['replyText'],
-            'replyUser': m['replyUser'],
-            'image': imageB64,
-          });
-        }
+        _p2p!.send(jsonEncode({
+          'type': 'msg',
+          'key': key,
+          'text': text,
+          'timestamp': ts,
+          'ttl': 0,
+          'replyText': m['replyText'],
+          'replyUser': m['replyUser'],
+          'image': imageB64,
+        }));
         sent++;
       } catch (_) {}
     }
@@ -1139,33 +727,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     },
                     onChangeEnd: (_) => _saveChatConfig(),
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      constraints: const BoxConstraints(maxWidth: 280),
-                      decoration: BoxDecoration(
-                        color: onSurf.withValues(alpha: 0.12),
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(16),
-                          topRight: Radius.circular(16),
-                          bottomLeft: Radius.circular(16),
-                          bottomRight: Radius.circular(4),
-                        ),
-                      ),
-                      child: Text(
-                        L.t('font_preview_sample'),
-                        style: FontService.style(
-                          color: onSurf,
-                          fontSize: messageFontSize,
-                        ),
-                      ),
-                    ),
-                  ),
                   Text(
                     L.t('ttl'),
                     style: FontService.style(
@@ -1198,7 +759,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 12),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.image_outlined,
@@ -1223,13 +783,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         color: onSurf.withValues(alpha: 0.75)),
                     title: Text(L.t('share_history'),
                         style: FontService.style(color: onSurf)),
-                    subtitle: Text(
-                      L.t('share_history_hint'),
-                      style: FontService.style(
-                        fontSize: 12,
-                        color: onSurf.withValues(alpha: 0.5),
-                      ),
-                    ),
                     onTap: () {
                       Navigator.pop(ctx);
                       _shareHistory();
@@ -1255,19 +808,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _setOnline(false);
-    _typingSub?.cancel();
-    _saveSub?.cancel();
-    _presenceSub?.cancel();
-    _callSub?.cancel();
-    _msgSub?.cancel();
-    _delSub?.cancel();
-    _pinSub?.cancel();
-    _readSub?.cancel();
     _p2pMsgSub?.cancel();
     _p2pStatusSub?.cancel();
     _p2p?.dispose();
-    _typingThrottle?.cancel();
     for (final t in _timers.values) {
       t.cancel();
     }
@@ -1302,7 +845,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: ChatAppBar(
-            // ... все параметры как были — не меняй
             serverRelayMode: serverRelayMode,
             blockServerMessages: blockServerMessages,
             showSearch: showSearch,
@@ -1311,7 +853,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             roomCode: widget.roomCode,
             otherUser: otherUser,
             otherOnline: otherOnline,
-            connectionMode: connectionMode, 
+            connectionMode: connectionMode,
             wipeOnExit: wipeOnExit,
             myUsername: widget.username,
             myAvatarBytes: myAvatarBytes,
@@ -1389,64 +931,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           size: 16,
                           color: onSurf.withValues(alpha: 0.4),
                         ),
-                        onPressed: () => _db
-                            .child('rooms')
-                            .child(widget.roomCode)
-                            .child('meta')
-                            .child('pinned')
-                            .remove(),
-                      ),
-                    ],
-                  ),
-                ),
-              if (saveRequestIncoming)
-                Container(
-                  color: onSurf.withValues(alpha: 0.08),
-                  padding: const EdgeInsets.all(10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          L.tParams(
-                            'save_chat_offer',
-                            {'name': '$saveRequestedBy'},
-                          ),
-                          style: TextStyle(color: onSurf),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => _db
-                            .child('rooms')
-                            .child(widget.roomCode)
-                            .child('meta')
-                            .update({'saveRequestedBy': null}),
-                        child: Text(
-                          L.t('no'),
-                          style: TextStyle(
-                            color: onSurf.withValues(alpha: 0.55),
-                          ),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          _db
-                              .child('rooms')
-                              .child(widget.roomCode)
-                              .child('meta')
-                              .update({
-                            'saved': true,
-                            'saveRequestedBy': null,
-                          });
-                          for (final t in _timers.values) {
-                            t.cancel();
-                          }
-                          _timers.clear();
-                          setState(() => isSavedChat = true);
-                        },
-                        child: Text(
-                          L.t('yes'),
-                          style: const TextStyle(color: Colors.greenAccent),
-                        ),
+                        onPressed: () => setState(() => pinned = null),
                       ),
                     ],
                   ),
@@ -1482,7 +967,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ChatInputBar(
                 controller: _controller,
                 p2pConnected: p2pConnected,
-                blockServerMessages : blockServerMessages,
+                blockServerMessages: blockServerMessages,
                 replyTo: replyTo,
                 onAttach: _attach,
                 onEmoji: _openEmoji,

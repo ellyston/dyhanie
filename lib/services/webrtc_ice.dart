@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// ICE / TURN — часть P2P-туннеля.
 /// Не связан с [blockServerMessages] (тот флаг только про relay сообщений в RTDB).
 ///
-/// Сигналинг (SDP/candidates) = Firebase rooms/.../webrtc — отдельно.
 class WebRtcIce {
   WebRtcIce._();
 

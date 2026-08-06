@@ -383,7 +383,7 @@ class LocaleService {
       'privacy_h2': '2. Какие данные используются',
       'privacy_p2': '• Username и аватар — хранятся локально на устройстве.\n• Код комнаты / dialogId — для соединения участников.\n• Сообщения — по умолчанию эфемерные (TTL), сервер используется временно для сигналинга.\n• Конфиги VPN — только ваши, приложение не предоставляет серверы.',
       'privacy_h3': '3. Серверы',
-      'privacy_p3': 'Сейчас для сигналинга и presence может использоваться Firebase (временный backend). В перспективе — минимальный свой сервер и P2P. Содержимое сообщений в сохранённом режиме остаётся на вашем устройстве.',
+    
       'privacy_h4': '4. Права пользователя',
       'privacy_p4': 'Вы можете очистить кэш, удалить чаты, сменить PIN и полностью стереть локальные данные через «Удалить всё» в профиле.',
       'privacy_h5': '5. Контакты',
@@ -767,7 +767,7 @@ class LocaleService {
       'privacy_h2': '2. What data is used',
       'privacy_p2': '• Username and avatar — stored locally on the device.\n• Room code / dialogId — to connect participants.\n• Messages — ephemeral by default (TTL); the server is temporary for signaling.\n• VPN configs — yours only; the app does not provide servers.',
       'privacy_h3': '3. Servers',
-      'privacy_p3': 'Firebase may currently be used for signaling and presence (temporary backend). Later — a minimal own server and P2P. Saved-mode message content stays on your device.',
+
       'privacy_h4': '4. Your rights',
       'privacy_p4': 'You can clear cache, delete chats, change PIN, and fully wipe local data via “Delete everything” in the profile.',
       'privacy_h5': '5. Contact',
@@ -1153,7 +1153,7 @@ class LocaleService {
       'privacy_h2': '2. Welche Daten',
       'privacy_p2': '• Username und Avatar — lokal auf dem Gerät.\n• Raumcode / dialogId — zur Verbindung der Teilnehmer.\n• Nachrichten — standardmässig ephemer (TTL); Server temporär für Signaling.\n• VPN-Configs — nur deine; die App stellt keine Server bereit.',
       'privacy_h3': '3. Server',
-      'privacy_p3': 'Firebase kann aktuell für Signaling und Presence genutzt werden (temporäres Backend). Später — eigener Minimalserver und P2P. Gespeicherte Nachrichten bleiben auf dem Gerät.',
+    
       'privacy_h4': '4. Rechte',
       'privacy_p4': 'Du kannst Cache leeren, Chats löschen, PIN ändern und lokale Daten über «Alles löschen» im Profil vollständig entfernen.',
       'privacy_h5': '5. Kontakt',

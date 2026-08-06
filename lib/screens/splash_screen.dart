@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/dyhanie_api.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/security_service.dart';
@@ -25,6 +26,17 @@ class _SplashScreenState extends State<SplashScreen> {
     _go();
   }
 
+  /// Подключение к VPS; ошибка сети не блокирует вход в приложение.
+  Future<void> _bindIfNeeded(String username) async {
+    try {
+      await DyhanieApi.instance.connect();
+      await DyhanieApi.instance.sessionBind(username);
+      debugPrint('Dyhanie bound as $username');
+    } catch (e) {
+      debugPrint('Dyhanie bind failed: $e');
+    }
+  }
+
   Future<void> _go() async {
     await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
@@ -39,6 +51,15 @@ class _SplashScreenState extends State<SplashScreen> {
       return;
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString('username');
+
+    // Сессия на VPS, если профиль уже есть (до PIN и до Home)
+    if (username != null && username.isNotEmpty) {
+      await _bindIfNeeded(username);
+      if (!mounted) return;
+    }
+
     final needLock = await _security.needsLockScreen();
     if (needLock) {
       Navigator.pushReplacement(
@@ -47,9 +68,6 @@ class _SplashScreenState extends State<SplashScreen> {
       );
       return;
     }
-
-    final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString('username');
 
     if (username == null || username.isEmpty) {
       Navigator.pushReplacement(

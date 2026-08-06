@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -29,7 +28,6 @@ class CallScreen extends StatefulWidget {
 
 class _CallScreenState extends State<CallScreen> {
   CallWebRTCService? _rtc;
-  final _db = FirebaseDatabase.instance.ref();
   final _remoteRenderer = RTCVideoRenderer();
 
   late String statusText;
@@ -56,9 +54,6 @@ class _CallScreenState extends State<CallScreen> {
 
     _ringTimeout = Timer(const Duration(seconds: 45), () async {
       if (!connected && mounted && !_closing) {
-        await _db.child('rooms').child(widget.roomCode).child('call').update({
-          'status': 'no_answer',
-        });
         await _finish();
       }
     });
@@ -80,26 +75,7 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   void _watchCallStatus() {
-    _callStatusSub = _db
-        .child('rooms')
-        .child(widget.roomCode)
-        .child('call')
-        .onValue
-        .listen((event) {
-      if (_closing) return;
-      if (event.snapshot.value == null) {
-        _finish();
-        return;
-      }
-      final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
-      final st = data['status']?.toString() ?? '';
-      if (st == 'rejected' || st == 'ended' || st == 'no_answer') {
-        _finish();
-      }
-      if (st == 'accepted' && mounted && !connected) {
-        setState(() => statusText = L.t('call_connecting'));
-      }
-    });
+   //статус звонка через RTDB больше не слушаем
   }
 
   Future<void> _startRtc() async {
@@ -111,13 +87,6 @@ class _CallScreenState extends State<CallScreen> {
 
     final isCaller = !widget.isIncoming;
 
-    if (widget.isIncoming) {
-      await _db
-          .child('rooms')
-          .child(widget.roomCode)
-          .child('call')
-          .update({'status': 'accepted'});
-    }
 
     _rtc = CallWebRTCService(
       roomCode: widget.roomCode,
@@ -186,9 +155,6 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _hangUp() async {
     if (_closing) return;
-    await _db.child('rooms').child(widget.roomCode).child('call').update({
-      'status': 'ended',
-    });
     await _finish();
   }
 

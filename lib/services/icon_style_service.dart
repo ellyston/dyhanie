@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'locale_service.dart';
 
 /// Новый стиль иконок:
 /// 1) ключ в [catalog]
