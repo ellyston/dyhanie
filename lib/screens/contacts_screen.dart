@@ -13,6 +13,7 @@ import 'chat_screen.dart';
 import 'chats_screen.dart';
 import '../services/font_service.dart';
 import '../services/icon_style_service.dart';
+import '../services/dyhanie_api.dart';
 
 class ContactsScreen extends StatefulWidget {
   final String myUsername;
@@ -98,6 +99,32 @@ class _ContactsScreenState extends State<ContactsScreen> {
         setState(() => incomingMessagesCount = count);
       },
     );
+  }
+  
+  String _dialogId(String other) {
+    final a = widget.myUsername.toLowerCase();
+    final b = other.toLowerCase();
+    return a.compareTo(b) <= 0 ? '${a}_$b' : '${b}_$a';
+  }
+
+  Future<void> _sendNudge(String other) async {
+    final to = other.toLowerCase().trim();
+    if (to.isEmpty || to == widget.myUsername.toLowerCase()) return;
+    try {
+      await DyhanieApi.instance.chatNudge(
+        to: to,
+        room: _dialogId(to),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Сигнал @$to отправлен')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
+    }
   }
 
   Future<void> _load() async {
@@ -680,15 +707,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           color: onSurf.withValues(alpha: 0.75),
                         ),
                       ),
-                      trailing: TextButton(
-                        onPressed: () => _unblock(b),
-                        child: Text(
-                          L.t('unblock_short'),
-                          style: FontService.style(
-                            color: onSurf.withValues(alpha: 0.55),
+                   
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Сигнал',
+                            icon: Icon(
+                              Icons.notifications_active,
+                              color: onSurf.withValues(alpha: 0.6),
+                              size: 22,
+                            ),
+                            onPressed: () => _sendNudge('@$b'), // или contact / item
                           ),
-                        ),
+                          // ... остальные кнопки (чат, блок, more)
+                        ],
                       ),
+
                     ),
                   )
                   .toList(),

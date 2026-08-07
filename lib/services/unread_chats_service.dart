@@ -57,7 +57,28 @@ class UnreadChatsService {
       if (openRoomCode != null && openRoomCode == room) return;
       await add(room, 1);
     });
+
+    _eventSub = DyhanieApi.instance.events.listen((m) async {
+      final t = m['type']?.toString();
+      if (t == 'msg.incoming') {
+        final p = m['payload'];
+        if (p is! Map) return;
+        final room = p['room']?.toString() ?? '';
+        if (room.isEmpty) return;
+        if (openRoomCode != null && openRoomCode == room) return;
+        await add(room, 1);
+      } else if (t == 'chat.nudge_incoming') {
+        final p = m['payload'];
+        if (p is! Map) return;
+        final room = p['room']?.toString() ?? '';
+        if (room.isEmpty) return;
+        if (openRoomCode != null && openRoomCode == room) return;
+        await add(room, 1); // бейдж как у сообщения
+      }
+    });
+
   }
+
 
   void stopListening() {
     _eventSub?.cancel();

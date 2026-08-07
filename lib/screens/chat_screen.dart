@@ -241,6 +241,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _listenServerMessages();
     Future.delayed(const Duration(milliseconds: 400), _syncServerMessages);
     UnreadChatsService.instance.startListening(openRoomCode: widget.roomCode);
+    UnreadChatsService.instance.clear(widget.roomCode);
+    DyhanieApi.instance
+      .chatNudgeAck(room: widget.roomCode)
+       .catchError((_) {});
   }
 
   @override

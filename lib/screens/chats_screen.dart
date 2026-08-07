@@ -12,6 +12,7 @@ import '../services/locale_service.dart';
 import '../services/outbox_service.dart';
 import '../services/unread_chats_service.dart';
 import 'chat_screen.dart';
+import '../services/dyhanie_api.dart';
 
 class ChatsScreen extends StatefulWidget {
   final String myUsername;
@@ -188,7 +189,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
           otherUser: other,
           incomingCount: unreadMap[id] ?? prev?.incomingCount ?? 0,
           comeOnline: prev?.comeOnline ?? false,
-          updatedAt: (row['updatedAt'] as int?) ?? (prev?.updatedAt ?? 0),
+          updatedAt:
+              (row['updatedAt'] as int?) ?? (prev?.updatedAt ?? 0),
           hasOutbox: prev?.hasOutbox ?? false,
           isSaved: true,
           preview: row['preview']?.toString() ?? prev?.preview ?? '',
@@ -254,6 +256,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   void _open(_ChatItem item) {
     UnreadChatsService.instance.clear(item.dialogId);
+    DyhanieApi.instance
+        .chatNudgeAck(room: item.dialogId)
+        .catchError((_) {});
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -266,6 +272,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
       await _loadSaved();
       await _loadLocalPending();
     });
+  }
+  
+  Future<void> _sendNudge(_ChatItem item) async {
+    try {
+      await DyhanieApi.instance.chatNudge(
+        to: item.otherUser,
+        room: item.dialogId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сигнал отправлен')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
+    }
   }
 
   Future<void> _togglePin(_ChatItem item) async {
@@ -562,11 +586,20 @@ class _ChatsScreenState extends State<ChatsScreen> {
                               fontSize: 12,
                             ),
                           ),
-                        )
-                      else if (item.hasOutbox)
+                        ),
+                      IconButton(
+                        tooltip: 'Сигнал',
+                        icon: Icon(
+                          Icons.notifications_active,
+                          color: onSurf.withValues(alpha: 0.6),
+                          size: 20,
+                        ),
+                        onPressed: () => _sendNudge(item),
+                      ),
+                      if (item.hasOutbox && item.badge == 0)
                         Icon(Icons.schedule,
                             color: onSurf.withValues(alpha: 0.4), size: 18)
-                      else if (item.isSaved)
+                      else if (item.isSaved && item.badge == 0)
                         Icon(Icons.bookmark,
                             color: onSurf.withValues(alpha: 0.35), size: 18),
                       IconButton(

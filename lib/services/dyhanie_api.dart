@@ -246,7 +246,7 @@ class DyhanieApi {
       throw Exception(r['error']?['code'] ?? 'CANCEL_FAIL');
     }
   }
- 
+  
   Future<Map<String, dynamic>> contactInvitesList() async {
     final r = await request('contact.invites_list');
     if (r['ok'] != true) {
@@ -272,4 +272,37 @@ class DyhanieApi {
     };
   }
   
+  Future<void> chatNudge({required String to, required String room}) async {
+    final r = await request('chat.nudge', payload: {
+      'to': to.toLowerCase(),
+      'room': room,
+    });
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'NUDGE_FAIL');
+    }
+  }
+
+  Future<void> chatNudgeAck({required String room}) async {
+    final r = await request('chat.nudge_ack', payload: {'room': room});
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'NUDGE_ACK_FAIL');
+    }
+  }
+
+  Future<Map<String, dynamic>> chatNudgesList() async {
+    final r = await request('chat.nudges_list');
+    if (r['ok'] != true) {
+      return {'nudges': <Map<String, dynamic>>[], 'badge': 0};
+    }
+    final p = r['payload'];
+    if (p is! Map) {
+      return {'nudges': <Map<String, dynamic>>[], 'badge': 0};
+    }
+    final nudges = (p['nudges'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final badge = p['badge'] is int ? p['badge'] as int : nudges.length;
+    return {'nudges': nudges, 'badge': badge};
+  }
+
 }
