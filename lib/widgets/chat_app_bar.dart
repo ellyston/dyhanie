@@ -218,9 +218,9 @@ class _ChatAppBarState extends State<ChatAppBar>
         ),
         IconButton(
           tooltip: switch (widget.serverRelayMode) {
-            ServerRelayMode.open => 'Сервер сообщений вкл',
-            ServerRelayMode.soft => 'Сервер выкл (мягко)',
-            ServerRelayMode.hard => 'Только P2P (жёстко)',
+            ServerRelayMode.open => L.t('server_relay_open'),
+            ServerRelayMode.soft => L.t('server_relay_soft'),
+            ServerRelayMode.hard => L.t('server_relay_hard'),
           },
           icon: _serverRelayIcon(onSurf),
           onPressed: widget.onToggleServerBlock,

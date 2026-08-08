@@ -449,6 +449,45 @@ class LocaleService {
       'webrtc_turn_password': 'Пароль TURN',
       'webrtc_force_relay': 'Только через TURN',
       'webrtc_force_relay_sub': 'Для LTE и проверки релеев',
+         // nudge / signal
+        'signal': 'Сигнал',
+        'signal_sent': 'Сигнал отправлен',
+        'signal_sent_to': 'Сигнал @{name} отправлен',
+        'signal_to_chat': 'Сигнал в чат',
+
+        // server relay modes (chat app bar)
+        'server_relay_open': 'Сервер сообщений вкл',
+        'server_relay_soft': 'Сервер выкл (мягко)',
+        'server_relay_hard': 'Только P2P (жёстко)',
+
+        // connection / P2P status
+        'none': 'нет',
+        'no_connection': 'Нет соединения',
+        'p2p_only_wait': 'Только P2P — ждём',
+
+        // chat misc
+        'file_too_big': 'Файл слишком большой',
+        'copied': 'Скопировано',
+
+        // profile wipe (полный текст с сервером)
+        'delete_all_body_server':
+            'Будут удалены все локальные данные приложения и аккаунт на сервере.\n\n'
+            'Имя «{name}» освободится, его сможет зарегистрировать другой человек.\n\n'
+            'Это действие нельзя отменить.',
+        'delete_all_footer':
+            'Удалит локальные данные и аккаунт на сервере. Имя пользователя освободится.',
+
+        // privacy (если privacy_p3 пустой/отсутствует)
+        'privacy_p3':
+            '• Сигналинг и запасной relay — на нашем сервере (сообщения после прочтения удаляются).\n'
+            '• TURN используется только для установки WebRTC-соединения.\n'
+            '• Контент чатов по возможности идёт по P2P.',
+
+        // recovery (если в ru нет)
+        'recovery_phrase_title': 'Резервная фраза',
+
+        // language screen
+        'language_region_ch': 'Швейцария',
     },
 
     // ═══════════════════════════════════════
@@ -834,6 +873,36 @@ class LocaleService {
       'webrtc_turn_password': 'TURN password',
       'webrtc_force_relay': 'TURN only',
       'webrtc_force_relay_sub': 'For LTE and relay testing',
+      'signal': 'Signal',
+
+        'signal_sent': 'Signal sent',
+        'signal_sent_to': 'Signal sent to @{name}',
+        'signal_to_chat': 'Signal to chat',
+
+        'server_relay_open': 'Server messages on',
+        'server_relay_soft': 'Server off (soft)',
+        'server_relay_hard': 'P2P only (hard)',
+
+        'none': 'none',
+        'no_connection': 'No connection',
+        'p2p_only_wait': 'P2P only — waiting',
+
+        'file_too_big': 'File is too large',
+        'copied': 'Copied',
+
+        'delete_all_body_server':
+            'All local app data and the account on the server will be deleted.\n\n'
+            'The name “{name}” will be freed and can be registered by someone else.\n\n'
+            'This action cannot be undone.',
+        'delete_all_footer':
+            'Deletes local data and the server account. The username will be freed.',
+
+        'privacy_p3':
+            '• Signaling and fallback relay run on our server (messages are removed after read).\n'
+            '• TURN is used only to establish the WebRTC connection.\n'
+            '• Chat content prefers P2P when possible.',
+
+        'language_region_ch': 'Switzerland',
     },
 
     // ═══════════════════════════════════════
@@ -1220,6 +1289,36 @@ class LocaleService {
       'webrtc_turn_password': 'TURN-Passwort',
       'webrtc_force_relay': 'Nur über TURN',
       'webrtc_force_relay_sub': 'Für LTE und Relay-Tests',
+      'signal': 'Signal',
+
+    'signal_sent': 'Signal gesendet',
+    'signal_sent_to': 'Signal an @{name} gesendet',
+    'signal_to_chat': 'Signal in den Chat',
+
+    'server_relay_open': 'Nachrichtenserver an',
+    'server_relay_soft': 'Server aus (weich)',
+    'server_relay_hard': 'Nur P2P (hart)',
+
+    'none': 'keine',
+    'no_connection': 'Keine Verbindung',
+    'p2p_only_wait': 'Nur P2P — warten',
+
+    'file_too_big': 'Datei ist zu gross',
+    'copied': 'Kopiert',
+
+    'delete_all_body_server':
+        'Alle lokalen App-Daten und das Konto auf dem Server werden gelöscht.\n\n'
+        'Der Name «{name}» wird freigegeben und kann von jemand anderem registriert werden.\n\n'
+        'Diese Aktion kann nicht rückgängig gemacht werden.',
+    'delete_all_footer':
+        'Löscht lokale Daten und das Serverkonto. Der Benutzername wird freigegeben.',
+
+    'privacy_p3':
+        '• Signaling und Fallback-Relay laufen auf unserem Server (Nachrichten nach dem Lesen gelöscht).\n'
+        '• TURN dient nur dem Aufbau der WebRTC-Verbindung.\n'
+        '• Chat-Inhalte bevorzugen P2P, wenn möglich.',
+
+    'language_region_ch': 'Schweiz',
     },
   };
 }

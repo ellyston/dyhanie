@@ -340,12 +340,16 @@ class _ChatsScreenState extends State<ChatsScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Сигнал отправлен')),
+         SnackBar(content: Text(L.t('signal_sent'))
+
+),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
+        SnackBar(content: Text('${L.t('error')}: $e')
+
+),
       );
     }
   }
@@ -676,7 +680,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           ),
                         ),
                       IconButton(
-                        tooltip: 'Сигнал',
+                        tooltip: L.t('signal'),
                         icon: Icon(
                           Icons.notifications_active,
                           color: onSurf.withValues(alpha: 0.6),

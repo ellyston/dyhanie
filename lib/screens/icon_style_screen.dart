@@ -32,7 +32,7 @@ class IconStyleScreen extends StatelessWidget {
                           ? Icons.apps_sharp
                           : Icons.apps_outlined,
                 ),
-                title: Text(e.value),
+                title: Text(L.t('icon_${e.key}')),
                 trailing: selected
                     ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
                     : null,

@@ -117,7 +117,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
+        SnackBar(content: Text('${L.t('error')}: $e')
+
+),
       );
     }
   }
@@ -705,7 +707,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                tooltip: 'Сигнал',
+                                tooltip: L.t('signal'),
                                 icon: Icon(
                                   Icons.notifications_active,
                                   color: onSurf.withValues(alpha: 0.6),

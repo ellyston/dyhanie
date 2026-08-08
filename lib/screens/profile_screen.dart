@@ -394,8 +394,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Удалит локальные данные и аккаунт на сервере. '
-            'Имя пользователя освободится.',
+            L.tParams('delete_all_body_server', {'name': widget.username}),
             textAlign: TextAlign.center,
             style: FontService.style(
               fontSize: 11,

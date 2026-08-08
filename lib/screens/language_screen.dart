@@ -33,7 +33,7 @@ class LanguageScreen extends StatelessWidget {
               ),
               subtitle: code == 'de_ch'
                   ? Text(
-                      'Schweiz',
+                      L.t('language_region_ch'),
                       style: FontService.style(
                         fontSize: 12,
                         color: onSurf.withValues(alpha: 0.45),
