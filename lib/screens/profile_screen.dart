@@ -171,9 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           style: FontService.style(color: onSurf),
         ),
         content: Text(
-          'Будут удалены все локальные данные приложения и аккаунт на сервере.\n\n'
-          'Имя «${widget.username}» освободится, его сможет зарегистрировать другой человек.\n\n'
-          'Это действие нельзя отменить.',
+          L.tParams('delete_all_body_server', {'name': widget.username}),
           style: FontService.style(
             color: onSurf.withValues(alpha: 0.8),
             height: 1.4,
@@ -394,7 +392,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            L.tParams('delete_all_body_server', {'name': widget.username}),
+            L.t('delete_all_footer'),
             textAlign: TextAlign.center,
             style: FontService.style(
               fontSize: 11,

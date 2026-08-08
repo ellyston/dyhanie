@@ -24,7 +24,7 @@ class FontScreen extends StatelessWidget {
               final selected = ctrl.code == e.key;
               return ListTile(
                 title: Text(
-                  e.value,
+                  L.t('font_${e.key}'),
                   style: FontService.style(
                     fontSize: 16,
                     color: Theme.of(context).colorScheme.onSurface,
