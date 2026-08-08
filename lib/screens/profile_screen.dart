@@ -5,8 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/avatar_cache.dart';
+import '../services/dyhanie_api.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
+import '../services/unread_chats_service.dart';
+import 'welcome_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String username;
@@ -23,6 +27,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  /// Свой аватар в prefs (home / старый код).
   static const avatarKey = 'avatar';
 
   final _picker = ImagePicker();
@@ -30,6 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Uint8List? avatarBytes;
   bool saving = false;
+  bool deleting = false;
 
   @override
   void initState() {
@@ -40,16 +46,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadAvatar() async {
+    // 1) свой ключ avatar
     final prefs = await SharedPreferences.getInstance();
     var b64 = prefs.getString(avatarKey);
-    if (b64 == null || b64.isEmpty) return;
-
-    if (b64.contains(',')) {
-      b64 = b64.split(',').last;
+    if (b64 != null && b64.isNotEmpty) {
+      if (b64.contains(',')) b64 = b64.split(',').last;
+      try {
+        final bytes = base64Decode(b64);
+        if (mounted) setState(() => avatarBytes = bytes);
+        return;
+      } catch (_) {}
     }
+
+    // 2) кэш avatar_<me>
+    final cached = await AvatarCache.load(widget.username);
+    if (cached != null && mounted) {
+      setState(() => avatarBytes = cached);
+      return;
+    }
+
+    // 3) сервер (если локально пусто)
     try {
-      final bytes = base64Decode(b64);
-      if (mounted) setState(() => avatarBytes = bytes);
+      await DyhanieApi.instance.connect();
+      final remote = await AvatarCache.fetch(
+        widget.username,
+        forceNetwork: true,
+      );
+      if (remote != null && mounted) {
+        setState(() => avatarBytes = remote);
+        await prefs.setString(avatarKey, base64Encode(remote));
+      }
+    } catch (_) {}
+  }
+
+  /// Локально + кэш + сервер.
+  Future<void> _persistAvatar(Uint8List bytes, String username) async {
+    final b64 = base64Encode(bytes);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(avatarKey, b64);
+    await AvatarCache.saveBytes(username, bytes);
+
+    try {
+      await DyhanieApi.instance.connect();
+      await DyhanieApi.instance.sessionBind(username);
+      await DyhanieApi.instance.avatarSet(b64);
     } catch (_) {}
   }
 
@@ -65,8 +105,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final bytes = await img.readAsBytes();
     setState(() => avatarBytes = bytes);
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(avatarKey, base64Encode(bytes));
+    await _persistAvatar(bytes, widget.username);
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -76,7 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _save() async {
     final name = _nameCtrl.text.trim().toLowerCase();
-    if (name.isEmpty) {
+    if (name.length < 3 || !RegExp(r'^[a-z0-9]+$').hasMatch(name)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(L.t('enter_username'))),
       );
@@ -84,33 +123,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     setState(() => saving = true);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('username', name);
+    try {
+      final old = widget.username.toLowerCase();
+      await DyhanieApi.instance.connect();
 
-    if (avatarBytes != null) {
-      await prefs.setString(avatarKey, base64Encode(avatarBytes!));
+      if (name != old) {
+        await DyhanieApi.instance.usernameRename(old, name);
+        await DyhanieApi.instance.sessionBind(name);
+      } else {
+        await DyhanieApi.instance.sessionBind(name);
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('username', name);
+
+      if (avatarBytes != null) {
+        await _persistAvatar(avatarBytes!, name);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(L.t('saved'))),
+      );
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${L.t('save_error')}: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => saving = false);
     }
-
-    if (!mounted) return;
-    setState(() => saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(L.t('saved'))),
-    );
-    Navigator.pop(context);
   }
 
   Future<void> _deleteEverything() async {
     final scheme = Theme.of(context).colorScheme;
-    final pinOk = await showDialog<bool>(
+    final onSurf = scheme.onSurface;
+
+    final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: scheme.surfaceContainerHigh,
-        title: Text(L.t('delete_all_title')),
-        content: Text(L.t('delete_all_body')),
+        title: Text(
+          L.t('delete_all_title'),
+          style: FontService.style(color: onSurf),
+        ),
+        content: Text(
+          'Будут удалены все локальные данные приложения и аккаунт на сервере.\n\n'
+          'Имя «${widget.username}» освободится, его сможет зарегистрировать другой человек.\n\n'
+          'Это действие нельзя отменить.',
+          style: FontService.style(
+            color: onSurf.withValues(alpha: 0.8),
+            height: 1.4,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(L.t('cancel')),
+            child: Text(
+              L.t('cancel'),
+              style: FontService.style(color: onSurf.withValues(alpha: 0.55)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -122,16 +195,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-    if (pinOk != true) return;
+    if (ok != true) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    setState(() => deleting = true);
+    final uname = widget.username.toLowerCase();
+
+    try {
+      try {
+        await DyhanieApi.instance.connect();
+        await DyhanieApi.instance.sessionBind(uname);
+        await DyhanieApi.instance.usernameDelete(uname);
+      } catch (_) {}
+
+      try {
+        await DyhanieApi.instance.disconnect();
+      } catch (_) {}
+
+      try {
+        await UnreadChatsService.instance.load();
+        for (final id in UnreadChatsService.instance.snapshot.keys.toList()) {
+          await UnreadChatsService.instance.clear(id);
+        }
+      } catch (_) {}
+
+      try {
+        await AvatarCache.remove(uname);
+      } catch (_) {}
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } finally {
+      if (mounted) setState(() => deleting = false);
+    }
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(L.t('data_deleted'))),
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const WelcomeScreen(goHomeOnContinue: false),
+      ),
+      (_) => false,
     );
-    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
@@ -144,6 +248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final bg = Theme.of(context).scaffoldBackgroundColor;
     final onSurf = Theme.of(context).colorScheme.onSurface;
+    final busy = saving || deleting;
 
     return Scaffold(
       backgroundColor: bg,
@@ -164,7 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               children: [
                 GestureDetector(
-                  onTap: _changeAvatar,
+                  onTap: busy ? null : _changeAvatar,
                   child: CircleAvatar(
                     radius: 48,
                     backgroundColor: onSurf.withValues(alpha: 0.1),
@@ -181,7 +286,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 10),
                 GestureDetector(
-                  onTap: _changeAvatar,
+                  onTap: busy ? null : _changeAvatar,
                   child: Text(
                     L.t('change_avatar'),
                     style: FontService.style(
@@ -203,6 +308,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           TextField(
             controller: _nameCtrl,
+            enabled: !busy,
             style: FontService.style(fontSize: 18, color: onSurf),
             cursorColor: onSurf,
             decoration: InputDecoration(
@@ -215,63 +321,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: onSurf,
-                foregroundColor: bg,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(28),
-                ),
+            height: 48,
+            child: TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: onSurf,
+                backgroundColor: Colors.transparent,
                 elevation: 0,
+                shadowColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
               ),
-              onPressed: saving ? null : _save,
+              onPressed: busy ? null : _save,
               child: saving
                   ? SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: bg),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: onSurf,
+                      ),
                     )
                   : Text(
                       L.t('save'),
                       style: FontService.style(
                         fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: bg,
+                        fontWeight: FontWeight.w500,
+                        color: onSurf,
                       ),
                     ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
-            height: 52,
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
+            height: 48,
+            child: TextButton(
+              style: TextButton.styleFrom(
                 foregroundColor: Colors.redAccent,
-                side: const BorderSide(color: Colors.redAccent),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(28),
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
                 ),
               ),
-              onPressed: _deleteEverything,
-              child: Text(
-                L.t('delete_all'),
-                style: FontService.style(fontSize: 15, color: Colors.redAccent),
-              ),
+              onPressed: busy ? null : _deleteEverything,
+              child: deleting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.redAccent,
+                      ),
+                    )
+                  : Text(
+                      L.t('delete_all'),
+                      style: FontService.style(
+                        fontSize: 15,
+                        color: Colors.redAccent,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 12),
           Text(
-            L.t('delete_all_hint'),
+            'Удалит локальные данные и аккаунт на сервере. '
+            'Имя пользователя освободится.',
             textAlign: TextAlign.center,
             style: FontService.style(
               fontSize: 11,
-              height: 1.3,
-              color: onSurf.withValues(alpha: 0.3),
+              height: 1.35,
+              color: onSurf.withValues(alpha: 0.35),
             ),
           ),
         ],

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,8 +12,10 @@ import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 import '../services/outbox_service.dart';
 import '../services/unread_chats_service.dart';
-import 'chat_screen.dart';
 import '../services/dyhanie_api.dart';
+import '../services/avatar_cache.dart';
+import 'chat_screen.dart';
+
 
 class ChatsScreen extends StatefulWidget {
   final String myUsername;
@@ -77,6 +80,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
               hasOutbox: prev?.hasOutbox ?? false,
               isSaved: prev?.isSaved ?? false,
               preview: prev?.preview ?? '',
+              avatarBytes: prev?.avatarBytes,
             );
           });
 
@@ -100,6 +104,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 hasOutbox: prev.hasOutbox,
                 isSaved: prev.isSaved,
                 preview: prev.preview,
+                avatarBytes: prev?.avatarBytes,
               );
             }
           }
@@ -124,6 +129,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
               hasOutbox: false,
               isSaved: false,
               preview: '',
+              avatarBytes: prev?.avatarBytes,
             );
           } else {
             items[e.key] = _ChatItem(
@@ -135,6 +141,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
               hasOutbox: prev.hasOutbox,
               isSaved: prev.isSaved,
               preview: prev.preview,
+              avatarBytes: prev.avatarBytes,
             );
           }
         }
@@ -194,6 +201,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
           hasOutbox: prev?.hasOutbox ?? false,
           isSaved: true,
           preview: row['preview']?.toString() ?? prev?.preview ?? '',
+          avatarBytes: prev?.avatarBytes,
         );
       }
     });
@@ -217,9 +225,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
               prev?.updatedAt ?? DateTime.now().millisecondsSinceEpoch,
           hasOutbox: count > 0,
           isSaved: prev?.isSaved ?? false,
+          avatarBytes: prev?.avatarBytes,
           preview: prev?.preview ?? '',
         );
       });
+      _ensureAvatar(other, id);
     }
   }
 
@@ -365,6 +375,30 @@ class _ChatsScreenState extends State<ChatsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _ensureAvatar(String other, String dialogId) async {
+    if (other.isEmpty) return;
+    final bytes = await AvatarCache.fetch(other);
+    if (!mounted || bytes == null) return;
+    final prev = items[dialogId];
+    if (prev == null) return;
+    if (prev.avatarBytes != null && prev.avatarBytes!.length == bytes.length) {
+      return; // уже есть
+    }
+    setState(() {
+      items[dialogId] = _ChatItem(
+        dialogId: prev.dialogId,
+        otherUser: prev.otherUser,
+        incomingCount: prev.incomingCount,
+        comeOnline: prev.comeOnline,
+        updatedAt: prev.updatedAt,
+        hasOutbox: prev.hasOutbox,
+        isSaved: prev.isSaved,
+        preview: prev.preview,
+        avatarBytes: prev?.avatarBytes,
+      );
+    });
   }
 
   Future<void> _deleteChat(_ChatItem item) async {
@@ -529,12 +563,17 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       : null,
                   leading: CircleAvatar(
                     backgroundColor: onSurf.withValues(alpha: 0.1),
-                    child: Text(
-                      item.otherUser.isNotEmpty
-                          ? item.otherUser[0].toUpperCase()
-                          : '?',
-                      style: FontService.style(color: onSurf),
-                    ),
+                    backgroundImage: item.avatarBytes != null
+                        ? MemoryImage(item.avatarBytes!)
+                        : null,
+                    child: item.avatarBytes == null
+                        ? Text(
+                            item.otherUser.isNotEmpty
+                                ? item.otherUser[0].toUpperCase()
+                                : '?',
+                            style: FontService.style(color: onSurf),
+                          )
+                        : null,
                   ),
                   title: Row(
                     children: [
@@ -629,6 +668,7 @@ class _ChatItem {
   final bool hasOutbox;
   final bool isSaved;
   final String preview;
+  final Uint8List? avatarBytes;
 
   _ChatItem({
     required this.dialogId,
@@ -639,6 +679,7 @@ class _ChatItem {
     required this.hasOutbox,
     this.isSaved = false,
     this.preview = '',
+    this.avatarBytes,
   });
 
   int get badge => comeOnline ? 1 : incomingCount;

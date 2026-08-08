@@ -106,6 +106,39 @@ class DyhanieApi {
     throw Exception(code);
   }
 
+  Future<void> usernameDelete(String username) async {
+    final r = await request(
+      'username.delete',
+      payload: {'username': username.toLowerCase().trim()},
+    );
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'DELETE_FAIL');
+    }
+  }
+
+  Future<void> avatarSet(String base64Data) async {
+    final clean = base64Data.contains(',')
+        ? base64Data.split(',').last.trim()
+        : base64Data.trim();
+    final r = await request('avatar.set', payload: {'data': clean});
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'AVATAR_SET_FAIL');
+    }
+  }
+
+  Future<String?> avatarGet(String username) async {
+    final r = await request(
+      'avatar.get',
+      payload: {'username': username.toLowerCase().trim()},
+    );
+    if (r['ok'] != true) return null;
+    final p = r['payload'];
+    if (p is! Map) return null;
+    final data = p['data']?.toString();
+    if (data == null || data.isEmpty) return null;
+    return data;
+  }
+
   Future<void> usernameRename(String from, String to) async {
     final r = await request(
       'username.rename',

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,13 +8,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/contact_invite_service.dart';
 import '../services/dialog_signal_service.dart';
-import '../services/locale_service.dart';
-import '../services/outbox_service.dart';
-import 'chat_screen.dart';
-import 'chats_screen.dart';
+import '../services/dyhanie_api.dart';
 import '../services/font_service.dart';
 import '../services/icon_style_service.dart';
-import '../services/dyhanie_api.dart';
+import '../services/locale_service.dart';
+import '../services/outbox_service.dart';
+import '../services/avatar_cache.dart';
+import 'chat_screen.dart';
+import 'chats_screen.dart';
 
 class ContactsScreen extends StatefulWidget {
   final String myUsername;
@@ -34,6 +36,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   final _globalSearch = TextEditingController();
   final _invites = ContactInviteService();
   final _signals = DialogSignalService();
+  final Map<String, Uint8List?> contactAvatars = {};
 
   List<Map<String, dynamic>> incomingInvites = [];
   List<Map<String, dynamic>> outgoingInvites = [];
@@ -100,21 +103,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
       },
     );
   }
-  
-  String _dialogId(String other) {
-    final a = widget.myUsername.toLowerCase();
-    final b = other.toLowerCase();
-    return a.compareTo(b) <= 0 ? '${a}_$b' : '${b}_$a';
-  }
 
   Future<void> _sendNudge(String other) async {
     final to = other.toLowerCase().trim();
     if (to.isEmpty || to == widget.myUsername.toLowerCase()) return;
     try {
-      await DyhanieApi.instance.chatNudge(
-        to: to,
-        room: _dialogId(to),
-      );
+      final room = OutboxService.dialogIdFor(widget.myUsername, to);
+      await DyhanieApi.instance.chatNudge(to: to, room: room);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Сигнал @$to отправлен')),
@@ -146,6 +141,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
     });
     _filter();
+    _loadAvatarsFor(contacts);
+  }
+
+  Future<void> _loadAvatarsFor(List<String> names) async {
+    for (final name in names) {
+      final bytes = await AvatarCache.fetch(name);
+      if (!mounted) return;
+      if (contactAvatars[name] != bytes) {
+        setState(() => contactAvatars[name] = bytes);
+      }
+    }
   }
 
   Future<void> _saveNotes() async {
@@ -387,6 +393,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: Icon(
+                Icons.notifications_active,
+                color: onSurf.withValues(alpha: 0.75),
+              ),
+              title: Text(
+                'Сигнал в чат',
+                style: FontService.style(color: onSurf),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _sendNudge(name);
+              },
+            ),
             ListTile(
               leading: Icon(
                 AppIcons.note,
@@ -656,10 +676,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: onSurf.withValues(alpha: 0.1),
-                            child: Text(
-                              name[0].toUpperCase(),
-                              style: FontService.style(color: onSurf),
-                            ),
+                            backgroundImage: contactAvatars[name] != null
+                                ? MemoryImage(contactAvatars[name]!)
+                                : null,
+                            child: contactAvatars[name] == null
+                                ? Text(
+                                    name[0].toUpperCase(),
+                                    style: FontService.style(color: onSurf),
+                                  )
+                                : null,
                           ),
                           title: Text(
                             '@$name',
@@ -674,12 +699,26 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                     color: onSurf.withValues(alpha: 0.4),
                                   ),
                                 ),
-                          trailing: IconButton(
-                            icon: Icon(
-                              Icons.more_vert,
-                              color: onSurf.withValues(alpha: 0.55),
-                            ),
-                            onPressed: () => _contactActions(name),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Сигнал',
+                                icon: Icon(
+                                  Icons.notifications_active,
+                                  color: onSurf.withValues(alpha: 0.6),
+                                  size: 22,
+                                ),
+                                onPressed: () => _sendNudge(name),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.more_vert,
+                                  color: onSurf.withValues(alpha: 0.55),
+                                ),
+                                onPressed: () => _contactActions(name),
+                              ),
+                            ],
                           ),
                           onTap: () => _writeTo(name),
                           onLongPress: () => _contactActions(name),
@@ -707,23 +746,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           color: onSurf.withValues(alpha: 0.75),
                         ),
                       ),
-                   
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'Сигнал',
-                            icon: Icon(
-                              Icons.notifications_active,
-                              color: onSurf.withValues(alpha: 0.6),
-                              size: 22,
-                            ),
-                            onPressed: () => _sendNudge('@$b'), // или contact / item
+                      trailing: TextButton(
+                        onPressed: () => _unblock(b),
+                        child: Text(
+                          L.t('unblock_short'),
+                          style: FontService.style(
+                            color: onSurf.withValues(alpha: 0.55),
                           ),
-                          // ... остальные кнопки (чат, блок, more)
-                        ],
+                        ),
                       ),
-
                     ),
                   )
                   .toList(),
