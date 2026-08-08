@@ -7,6 +7,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../services/call_webrtc_service.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
+import '../services/icon_style_service.dart';
 
 class CallScreen extends StatefulWidget {
   final String roomCode;
@@ -234,7 +235,7 @@ class _CallScreenState extends State<CallScreen> {
                       onTap: _toggleMute,
                     ),
                     _roundBtn(
-                      icon: Icons.call_end,
+                      icon: AppIcons.call_end,
                       color: Colors.redAccent,
                       onTap: _hangUp,
                       big: true,

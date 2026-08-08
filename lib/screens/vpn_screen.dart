@@ -13,6 +13,7 @@ import '../services/vpn/vpn_log_service.dart';
 import '../services/vpn/vpn_subscription_scheduler.dart';
 import '../services/vpn_import_service.dart';
 import '../services/vpn_storage_service.dart';
+import '../services/icon_style_service.dart';
 import 'vpn_qr_scan_screen.dart';
 
 class VpnScreen extends StatefulWidget {
@@ -959,7 +960,7 @@ class _SlotBlock extends StatelessWidget {
                   tooltip: L.t('vpn_tooltip_refresh_now'),
                 ),
               PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert,
+                icon: Icon(AppIcons.more,
                     color: onSurf.withValues(alpha: 0.55)),
                 color: menuBg,
                 onSelected: (v) {

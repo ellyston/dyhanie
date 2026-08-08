@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/dyhanie_key/dyhanie_key_stub.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
+import '../services/icon_style_service.dart';
 
 /// Показ резервной фразы (create). Заглушка без реальной крипты.
 class RecoveryPhraseScreen extends StatefulWidget {
@@ -148,7 +149,7 @@ class _RecoveryPhraseScreenState extends State<RecoveryPhraseScreen> {
                       TextButton.icon(
                         onPressed: _copyAll,
                         icon: Icon(
-                          Icons.copy,
+                          AppIcons.copy,
                           color: onSurf.withValues(alpha: 0.7),
                         ),
                         label: Text(

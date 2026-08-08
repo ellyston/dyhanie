@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
+import '../services/icon_style_service.dart';
 
 class ChatInputBar extends StatelessWidget {
   final TextEditingController controller;
@@ -39,7 +40,7 @@ class ChatInputBar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
-                Icon(Icons.reply, color: onSurf.withValues(alpha: 0.55), size: 16),
+                Icon(AppIcons.reply, color: onSurf.withValues(alpha: 0.55), size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -53,7 +54,7 @@ class ChatInputBar extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  icon: Icon(Icons.close, size: 16, color: onSurf.withValues(alpha: 0.4)),
+                  icon: Icon(AppIcons.close, size: 16, color: onSurf.withValues(alpha: 0.4)),
                   onPressed: onClearReply,
                 ),
               ],
@@ -93,7 +94,7 @@ class ChatInputBar extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onSend,
-                icon: Icon(Icons.send, color: onSurf),
+                icon: Icon(AppIcons.send, color: onSurf),
               ),
             ],
           ),

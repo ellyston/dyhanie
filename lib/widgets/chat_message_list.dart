@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
+import '../services/icon_style_service.dart';
 
 class ChatMessageList extends StatelessWidget {
   final List<Map<String, dynamic>> messages;
@@ -210,7 +211,7 @@ class ChatMessageList extends StatelessWidget {
             background: Container(
               alignment: Alignment.centerRight,
               padding: const EdgeInsets.only(right: 20),
-              child: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              child: const Icon(AppIcons.delete_outline, color: Colors.redAccent),
             ),
             child: bubble,
           );
