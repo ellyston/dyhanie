@@ -396,10 +396,16 @@ class _ChatsScreenState extends State<ChatsScreen> {
         hasOutbox: prev.hasOutbox,
         isSaved: prev.isSaved,
         preview: prev.preview,
-        avatarBytes: prev?.avatarBytes,
+        avatarBytes: bytes,
       );
     });
+    for (final e in items.entries) {
+      if (e.value.otherUser.isNotEmpty) {
+        _ensureAvatar(e.value.otherUser, e.key);
+      }
+    }
   }
+  
 
   Future<void> _deleteChat(_ChatItem item) async {
     final scheme = Theme.of(context).colorScheme;

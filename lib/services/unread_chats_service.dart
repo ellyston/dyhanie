@@ -44,39 +44,20 @@ class UnreadChatsService {
     _ctrl.add(snapshot);
   }
 
-  /// Слушать msg.incoming на уровне приложения (вызывать после bind).
   void startListening({String? openRoomCode}) {
     _eventSub?.cancel();
     _eventSub = DyhanieApi.instance.events.listen((m) async {
-      if (m['type']?.toString() != 'msg.incoming') return;
+      final t = m['type']?.toString();
+      if (t != 'msg.incoming' && t != 'chat.nudge_incoming') return;
+
       final p = m['payload'];
       if (p is! Map) return;
       final room = p['room']?.toString() ?? '';
       if (room.isEmpty) return;
-      // уже в этом чате — не копить (чат сам ack'нет)
       if (openRoomCode != null && openRoomCode == room) return;
+
       await add(room, 1);
     });
-
-    _eventSub = DyhanieApi.instance.events.listen((m) async {
-      final t = m['type']?.toString();
-      if (t == 'msg.incoming') {
-        final p = m['payload'];
-        if (p is! Map) return;
-        final room = p['room']?.toString() ?? '';
-        if (room.isEmpty) return;
-        if (openRoomCode != null && openRoomCode == room) return;
-        await add(room, 1);
-      } else if (t == 'chat.nudge_incoming') {
-        final p = m['payload'];
-        if (p is! Map) return;
-        final room = p['room']?.toString() ?? '';
-        if (room.isEmpty) return;
-        if (openRoomCode != null && openRoomCode == room) return;
-        await add(room, 1); // бейдж как у сообщения
-      }
-    });
-
   }
 
 

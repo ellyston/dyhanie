@@ -19,6 +19,7 @@ import '../services/unread_chats_service.dart';
 import '../widgets/chat_app_bar.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
+import '../services/avatar_cache.dart';
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
 
@@ -111,19 +112,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final myRaw = prefs.getString('avatar');
     if (myRaw != null && myRaw.isNotEmpty) {
       try {
-        mine = base64Decode(myRaw);
+        final clean = myRaw.contains(',') ? myRaw.split(',').last : myRaw;
+        mine = base64Decode(clean);
       } catch (_) {}
     }
 
     Uint8List? otherBytes;
     final other = otherUser ?? _otherFromRoomCode();
-    if (other != null) {
-      final raw = prefs.getString('avatar_$other');
-      if (raw != null && raw.isNotEmpty) {
-        try {
-          otherBytes = base64Decode(raw);
-        } catch (_) {}
-      }
+    if (other != null && other.isNotEmpty) {
+      otherBytes = await AvatarCache.fetch(other);
     }
 
     if (!mounted) return;
@@ -1033,6 +1030,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     UnreadChatsService.instance.startListening();
+    UnreadChatsService.instance.clear(widget.roomCode);
     _p2pMsgSub?.cancel();
     _p2pStatusSub?.cancel();
     _apiMsgSub?.cancel();
