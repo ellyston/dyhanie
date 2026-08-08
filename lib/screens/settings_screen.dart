@@ -134,7 +134,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               _tile(
-                icon: Icons.hub_outlined,
+                icon: AppIcons.hub,
                 title: L.t('webrtc_ice_title'),
                 subtitle: L.t('webrtc_ice_sub'),
                 onTap: () {
@@ -149,7 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 16),
               _section(L.t('security_section')),
               _tile(
-                icon: Icons.vpn_key_outlined,
+                icon: AppIcons.vpn,
                 title: L.t('recovery_phrase_menu'),
                 subtitle: L.t('recovery_phrase_menu_sub'),
                 onTap: () {
@@ -162,7 +162,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               _tile(
-                icon: Icons.restore,
+                icon: AppIcons.restore,
                 title: L.t('restore_phrase_menu'),
                 subtitle: L.t('restore_phrase_menu_sub'),
                 onTap: () {

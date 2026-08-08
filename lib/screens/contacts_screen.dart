@@ -405,7 +405,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           children: [
             ListTile(
               leading: Icon(
-                Icons.notifications_active,
+                AppIcons.signal,
                 color: onSurf.withValues(alpha: 0.75),
               ),
               title: Text(
@@ -511,8 +511,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
             Material(
               color: Colors.blueAccent.withValues(alpha: 0.2),
               child: ListTile(
-                leading: const Icon(
-                  Icons.mark_email_unread,
+                leading: Icon(
+                  AppIcons.mailUnread,
                   color: Colors.lightBlueAccent,
                 ),
                 title: Text(
@@ -528,7 +528,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     color: onSurf.withValues(alpha: 0.55),
                   ),
                 ),
-                trailing: Icon(Icons.chevron_right,
+                trailing: Icon(AppIcons.chevron,
                     color: onSurf.withValues(alpha: 0.55)),
                 onTap: () {
                   Navigator.push(
@@ -546,8 +546,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
             return Material(
               color: Colors.orange.withValues(alpha: 0.15),
               child: ListTile(
-                leading: const Icon(
-                  Icons.person_add_alt_1,
+                leading: Icon(
+                  AppIcons.personAdd,
                   color: Colors.orangeAccent,
                 ),
                 title: Text(
@@ -583,7 +583,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             return Material(
               color: onSurf.withValues(alpha: 0.04),
               child: ListTile(
-                leading: Icon(Icons.hourglass_top,
+                leading: Icon(AppIcons.hourglass,
                     color: onSurf.withValues(alpha: 0.55)),
                 title: Text(
                   L.tParams('waiting_for', {'name': to}),
@@ -612,7 +612,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               decoration: InputDecoration(
                 hintText: L.t('global_search'),
                 hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
-                prefixIcon: Icon(Icons.travel_explore,
+                prefixIcon: Icon(AppIcons.explore,
                     color: onSurf.withValues(alpha: 0.4)),
                 suffixIcon: globalSending
                     ? const Padding(
@@ -624,7 +624,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         ),
                       )
                     : IconButton(
-                        icon: Icon(Icons.send,
+                        icon: Icon(AppIcons.send,
                             color: onSurf.withValues(alpha: 0.75)),
                         onPressed: _globalSearchSubmit,
                       ),
@@ -647,7 +647,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 hintText: L.t('local_search'),
                 hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
                 prefixIcon:
-                    Icon(Icons.search, color: onSurf.withValues(alpha: 0.4)),
+                    Icon(AppIcons.search, color: onSurf.withValues(alpha: 0.4)),
                 filled: true,
                 fillColor: onSurf.withValues(alpha: 0.06),
                 border: OutlineInputBorder(
@@ -680,7 +680,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           alignment: Alignment.centerRight,
                           padding: const EdgeInsets.only(right: 20),
                           child:
-                              const Icon(Icons.delete, color: Colors.white),
+                               Icon(AppIcons.delete, color: Colors.white),
                         ),
                         onDismissed: (_) => _remove(name),
                         child: ListTile(
@@ -717,7 +717,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               IconButton(
                                 tooltip: L.t('signal'),
                                 icon: Icon(
-                                  Icons.notifications_active,
+                                  AppIcons.signal,
                                   color: onSurf.withValues(alpha: 0.6),
                                   size: 22,
                                 ),
@@ -725,7 +725,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               ),
                               IconButton(
                                 icon: Icon(
-                                  Icons.more_vert,
+                                  AppIcons.more,
                                   color: onSurf.withValues(alpha: 0.55),
                                 ),
                                 onPressed: () => _contactActions(name),

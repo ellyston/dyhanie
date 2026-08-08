@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/server_relay_mode.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
+import '../services/icon_style_service.dart';
 
 class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
   final bool showSearch;
@@ -115,17 +116,17 @@ class _ChatAppBarState extends State<ChatAppBar>
     switch (widget.serverRelayMode) {
       case ServerRelayMode.open:
         return Icon(
-          Icons.cloud_outlined,
+          AppIcons.cloud,
           color: onSurf.withValues(alpha: 0.75),
         );
       case ServerRelayMode.soft:
-        return const Icon(Icons.cloud_off, color: Colors.redAccent);
+        return Icon(AppIcons.cloudOff, color: Colors.redAccent);
       case ServerRelayMode.hard:
-        return const Stack(
+        return  Stack(
           alignment: Alignment.center,
           children: [
-            Icon(Icons.cloud_off, color: Colors.redAccent),
-            Icon(Icons.close, size: 16, color: Colors.redAccent),
+            Icon(AppIcons.cloudOff, color: Colors.redAccent),
+            Icon(AppIcons.close, size: 16, color: Colors.redAccent),
           ],
         );
     }
@@ -142,7 +143,7 @@ class _ChatAppBarState extends State<ChatAppBar>
       toolbarHeight: 96,
       leadingWidth: 48,
       leading: IconButton(
-        icon: Icon(Icons.arrow_back, color: onSurf),
+        icon: Icon(AppIcons.back, color: onSurf),
         onPressed: widget.onBack,
       ),
       title: widget.showSearch
@@ -211,7 +212,7 @@ class _ChatAppBarState extends State<ChatAppBar>
       actions: [
         IconButton(
           icon: Icon(
-            widget.showSearch ? Icons.close : Icons.search,
+            widget.showSearch ? Icons.close : AppIcons.search,
             color: onSurf.withValues(alpha: 0.75),
           ),
           onPressed: widget.onToggleSearch,
@@ -226,20 +227,20 @@ class _ChatAppBarState extends State<ChatAppBar>
           onPressed: widget.onToggleServerBlock,
         ),
         IconButton(
-          icon: Icon(Icons.call, color: onSurf.withValues(alpha: 0.75)),
+          icon: Icon(AppIcons.call, color: onSurf.withValues(alpha: 0.75)),
           onPressed: widget.onCall,
         ),
         IconButton(
           tooltip:
               widget.wipeOnExit ? L.t('wipe_on_exit') : L.t('keep_on_exit'),
           icon: Icon(
-            widget.wipeOnExit ? Icons.delete_forever : Icons.save_outlined,
+            widget.wipeOnExit ? AppIcons.wipe : Icons.save_outlined,
             color: widget.wipeOnExit ? Colors.redAccent : Colors.greenAccent,
           ),
           onPressed: widget.onToggleWipe,
         ),
         IconButton(
-          icon: Icon(Icons.tune, color: onSurf.withValues(alpha: 0.75)),
+          icon: Icon(AppIcons.tune, color: onSurf.withValues(alpha: 0.75)),
           onPressed: widget.onSettings,
         ),
       ],

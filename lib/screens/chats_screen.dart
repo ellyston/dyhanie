@@ -678,17 +678,17 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       IconButton(
                         tooltip: L.t('signal'),
                         icon: Icon(
-                          Icons.notifications_active,
+                          AppIcons.signal,
                           color: onSurf.withValues(alpha: 0.6),
                           size: 20,
                         ),
                         onPressed: () => _sendNudge(item),
                       ),
                       if (item.hasOutbox && item.badge == 0)
-                        Icon(Icons.schedule,
+                        Icon(AppIcons.schedule,
                             color: onSurf.withValues(alpha: 0.4), size: 18)
                       else if (item.isSaved && item.badge == 0)
-                        Icon(Icons.bookmark,
+                        Icon(AppIcons.bookmark,
                             color: onSurf.withValues(alpha: 0.35), size: 18),
                       IconButton(
                         icon: Icon(

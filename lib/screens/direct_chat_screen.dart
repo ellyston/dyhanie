@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../services/dialog_signal_service.dart';
 import '../services/outbox_service.dart';
+import '../services/icon_style_service.dart';
 
 class DirectChatScreen extends StatefulWidget {
   final String myUsername;
@@ -282,7 +283,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       appBar: AppBar(
         backgroundColor: bg, // было Colors.black
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: onSurf), // было Colors.white
+          icon: Icon(AppIcons.back, color: onSurf), // было Colors.white
           onPressed: _leave,
         ),
         title: Column(
@@ -412,7 +413,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                 IconButton(
                   onPressed: sending ? null : _send,
                   icon: Icon(
-                    Icons.send,
+                    AppIcons.send,
                     color: sending
                         ? onSurf.withValues(alpha: 0.24)
                         : onSurf,

@@ -146,5 +146,92 @@ class AppIcons {
         Icons.more_vert_rounded,
         Icons.more_vert,
       );
+  // ── navigation / common ──
+  static IconData get back =>
+      pick(Icons.arrow_back_outlined, Icons.arrow_back_rounded, Icons.arrow_back_sharp);
 
+  static IconData get close =>
+      pick(Icons.close_outlined, Icons.close_rounded, Icons.close);
+
+  static IconData get search =>
+      pick(Icons.search_outlined, Icons.search_rounded, Icons.search_sharp);
+
+  static IconData get send =>
+      pick(Icons.send_outlined, Icons.send_rounded, Icons.send_sharp);
+
+  static IconData get call =>
+      pick(Icons.call_outlined, Icons.call_rounded, Icons.call_sharp);
+
+  static IconData get copy =>
+      pick(Icons.copy_outlined, Icons.copy_rounded, Icons.copy_sharp);
+
+  static IconData get reply =>
+      pick(Icons.reply_outlined, Icons.reply_rounded, Icons.reply_sharp);
+
+  static IconData get share =>
+      pick(Icons.ios_share_outlined, Icons.ios_share, Icons.ios_share);
+
+  static IconData get image =>
+      pick(Icons.image, Icons.image_rounded, Icons.image_sharp);
+
+  static IconData get tune =>
+      pick(Icons.tune_outlined, Icons.tune, Icons.tune_sharp);
+
+  static IconData get save =>
+      pick(Icons.save_outlined, Icons.save_rounded, Icons.save_sharp);
+
+  static IconData get wipe =>
+      pick(Icons.delete_forever_outlined, Icons.delete_forever, Icons.delete_forever);
+
+  // ── status / chat list ──
+  static IconData get signal => pick(
+        Icons.notifications_active_outlined,
+        Icons.notifications_active_rounded,
+        Icons.notifications_active_sharp,
+      );
+
+  static IconData get schedule =>
+      pick(Icons.schedule_outlined, Icons.schedule, Icons.schedule_sharp);
+
+  static IconData get bookmark =>
+      pick(Icons.bookmark_outline, Icons.bookmark_rounded, Icons.bookmark_sharp);
+
+  // ── settings extras ──
+  static IconData get hub =>
+      pick(Icons.hub_outlined, Icons.hub_rounded, Icons.hub_sharp);
+
+  static IconData get vpn =>
+      pick(Icons.vpn_key_outlined, Icons.vpn_key_rounded, Icons.vpn_key_sharp);
+
+  static IconData get restore =>
+      pick(Icons.restore_outlined, Icons.restore, Icons.restore_sharp);
+
+  // ── contacts extras ──
+  static IconData get explore => pick(
+        Icons.travel_explore_outlined,
+        Icons.travel_explore_rounded,
+        Icons.travel_explore,
+      );
+
+  static IconData get mailUnread => pick(
+        Icons.mark_email_unread_outlined,
+        Icons.mark_email_unread_rounded,
+        Icons.mark_email_unread,
+      );
+
+  static IconData get personAdd => pick(
+        Icons.person_add_alt_1_outlined,
+        Icons.person_add_alt_1_rounded,
+        Icons.person_add_alt_1_sharp,
+      );
+
+  static IconData get hourglass =>
+      pick(Icons.hourglass_top_outlined, Icons.hourglass_top, Icons.hourglass_top);
+
+  // ── connection ──
+  static IconData get cloud =>
+      pick(Icons.cloud_outlined, Icons.cloud_rounded, Icons.cloud);
+
+  static IconData get cloudOff =>
+      pick(Icons.cloud_off_outlined, Icons.cloud_off, Icons.cloud_off);
 }

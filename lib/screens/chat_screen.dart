@@ -20,6 +20,7 @@ import '../widgets/chat_app_bar.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
 import '../services/avatar_cache.dart';
+import '../services/icon_style_service.dart';
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
 
@@ -759,7 +760,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.reply, color: onSurf.withValues(alpha: 0.7)),
+              leading: Icon(AppIcons.reply, color: onSurf.withValues(alpha: 0.7)),
               title: Text(L.t('reply'), style: FontService.style(color: onSurf)),
               onTap: () {
                 setState(() => replyTo = msg);
@@ -767,7 +768,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               },
             ),
             ListTile(
-              leading: Icon(Icons.push_pin, color: onSurf.withValues(alpha: 0.7)),
+              leading: Icon(AppIcons.pin, color: onSurf.withValues(alpha: 0.7)),
               title: Text(L.t('pin_message'), style: FontService.style(color: onSurf)),
               onTap: () {
                 _pinMessage(msg);
@@ -775,7 +776,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               },
             ),
             ListTile(
-              leading: Icon(Icons.copy, color: onSurf.withValues(alpha: 0.7)),
+              leading: Icon(AppIcons.copy, color: onSurf.withValues(alpha: 0.7)),
               title: Text(L.t('copy'), style: FontService.style(color: onSurf)),
               onTap: () {
                 Clipboard.setData(
@@ -789,7 +790,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
             if (msg['username'] == widget.username)
               ListTile(
-                leading: const Icon(Icons.delete, color: Colors.redAccent),
+                leading: Icon(AppIcons.delete, color: Colors.redAccent),
                 title: Text(
                   L.t('delete_for_all'),
                   style: const TextStyle(color: Colors.redAccent),
@@ -980,7 +981,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.image_outlined,
+                    leading: Icon(AppIcons.image,
                         color: onSurf.withValues(alpha: 0.75)),
                     title: Text(L.t('background'),
                         style: FontService.style(color: onSurf)),
@@ -998,7 +999,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.ios_share_outlined,
+                    leading: Icon(AppIcons.share,
                         color: onSurf.withValues(alpha: 0.75)),
                     title: Text(L.t('share_history'),
                         style: FontService.style(color: onSurf)),
@@ -1133,7 +1134,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(
                     children: [
-                      Icon(Icons.push_pin,
+                      Icon(AppIcons.pin,
                           color: onSurf.withValues(alpha: 0.55), size: 16),
                       const SizedBox(width: 8),
                       Expanded(
@@ -1149,7 +1150,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       ),
                       IconButton(
                         icon: Icon(
-                          Icons.close,
+                          AppIcons.close,
                           size: 16,
                           color: onSurf.withValues(alpha: 0.4),
                         ),
