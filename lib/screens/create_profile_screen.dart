@@ -8,8 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
-import 'home_screen.dart';
 import '../services/dyhanie_api.dart';
+import '../services/avatar_cache.dart';
+import 'home_screen.dart';
 
 class CreateProfileScreen extends StatefulWidget {
   const CreateProfileScreen({super.key});
@@ -52,8 +53,14 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', username);
+
       if (_avatar != null) {
-        await prefs.setString('avatar', base64Encode(_avatar!));
+        final b64 = base64Encode(_avatar!);
+        // локально
+        await prefs.setString('avatar', b64);
+        await AvatarCache.saveBytes(username, _avatar!);
+        // сервер (нужен bind — уже сделан выше)
+        await DyhanieApi.instance.avatarSet(b64);
       }
 
       if (!mounted) return;

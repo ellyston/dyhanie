@@ -127,6 +127,12 @@ class DyhanieApi {
   }
 
   Future<String?> avatarGet(String username) async {
+    final m = await avatarGetWithMeta(username);
+    return m?['data']?.toString();
+  }
+
+  /// data + updated_at (для инвалидации кэша)
+  Future<Map<String, dynamic>?> avatarGetWithMeta(String username) async {
     final r = await request(
       'avatar.get',
       payload: {'username': username.toLowerCase().trim()},
@@ -136,7 +142,10 @@ class DyhanieApi {
     if (p is! Map) return null;
     final data = p['data']?.toString();
     if (data == null || data.isEmpty) return null;
-    return data;
+    return {
+      'data': data,
+      'updated_at': p['updated_at'],
+    };
   }
 
   Future<void> usernameRename(String from, String to) async {
