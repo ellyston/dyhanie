@@ -39,7 +39,7 @@ class FontService {
   static String label(String code) {
     final key = catalog[code];
     if (key == null) return code;
-    return L.t(key);
+    return L.t('font_$code');
   }
 
   static TextStyle style({

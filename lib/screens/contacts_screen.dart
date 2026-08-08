@@ -112,7 +112,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       await DyhanieApi.instance.chatNudge(to: to, room: room);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Сигнал @$to отправлен')),
+        SnackBar(content: Text(L.tParams('signal_sent_to', {'name': to}))),
       );
     } catch (e) {
       if (!mounted) return;
@@ -401,7 +401,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 color: onSurf.withValues(alpha: 0.75),
               ),
               title: Text(
-                'Сигнал в чат',
+                L.t('signal_to_chat'),
                 style: FontService.style(color: onSurf),
               ),
               onTap: () {

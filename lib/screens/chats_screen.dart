@@ -340,16 +340,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-         SnackBar(content: Text(L.t('signal_sent'))
-
-),
+        SnackBar(content: Text(L.t('signal_sent'))),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${L.t('error')}: $e')
-
-),
+        SnackBar(content: Text('${L.t('error')}: $e')),
       );
     }
   }
