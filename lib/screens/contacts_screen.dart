@@ -275,24 +275,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _block(String name) async {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: scheme.surfaceContainerHigh,
         title: Text(
           L.tParams('block_confirm', {'name': name}),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(color: onSurf),
         ),
         content: Text(
           L.t('block_confirm_body'),
-          style: const TextStyle(color: Colors.white70),
+          style: FontService.style(color: onSurf.withValues(alpha: 0.75)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               L.t('cancel'),
-              style: const TextStyle(color: Colors.white54),
+              style: FontService.style(color: onSurf.withValues(alpha: 0.55)),
             ),
           ),
           TextButton(
@@ -320,21 +323,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _editNote(String name) {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
     final controller = TextEditingController(text: notes[name] ?? '');
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: scheme.surfaceContainerHigh,
         title: Text(
           L.tParams('note_for', {'name': name}),
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(color: onSurf),
         ),
         content: TextField(
           controller: controller,
-          style: const TextStyle(color: Colors.white),
+          style: FontService.style(color: onSurf),
           decoration: InputDecoration(
             hintText: L.t('note'),
-            hintStyle: const TextStyle(color: Colors.white30),
+            hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
           ),
         ),
         actions: [
@@ -347,7 +352,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             },
             child: Text(
               L.t('save'),
-              style: const TextStyle(color: Colors.white),
+              style: FontService.style(color: onSurf),
             ),
           ),
         ],
@@ -356,9 +361,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _pickSound(String name) {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: scheme.surfaceContainerHigh,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -367,9 +375,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
             return ListTile(
               leading: Icon(
                 selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: Colors.white70,
+                color: onSurf.withValues(alpha: 0.7),
               ),
-              title: Text(e.value, style: const TextStyle(color: Colors.white)),
+              title: Text(e.value, style: FontService.style(color: onSurf)),
               onTap: () async {
                 sounds[name] = e.key;
                 await _saveSounds();

@@ -748,37 +748,35 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _messageActions(Map<String, dynamic> msg) {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: scheme.surfaceContainerHigh,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.reply, color: Colors.white70),
-              title:
-                  Text(L.t('reply'), style: const TextStyle(color: Colors.white)),
+              leading: Icon(Icons.reply, color: onSurf.withValues(alpha: 0.7)),
+              title: Text(L.t('reply'), style: FontService.style(color: onSurf)),
               onTap: () {
                 setState(() => replyTo = msg);
                 Navigator.pop(ctx);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.push_pin, color: Colors.white70),
-              title: Text(
-                L.t('pin_message'),
-                style: const TextStyle(color: Colors.white),
-              ),
+              leading: Icon(Icons.push_pin, color: onSurf.withValues(alpha: 0.7)),
+              title: Text(L.t('pin_message'), style: FontService.style(color: onSurf)),
               onTap: () {
                 _pinMessage(msg);
                 Navigator.pop(ctx);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.copy, color: Colors.white70),
-              title:
-                  Text(L.t('copy'), style: const TextStyle(color: Colors.white)),
+              leading: Icon(Icons.copy, color: onSurf.withValues(alpha: 0.7)),
+              title: Text(L.t('copy'), style: FontService.style(color: onSurf)),
               onTap: () {
                 Clipboard.setData(
                   ClipboardData(text: msg['text']?.toString() ?? ''),
