@@ -447,11 +447,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
         avatarBytes: bytes,
       );
     });
-    for (final e in items.entries) {
-      if (e.value.otherUser.isNotEmpty) {
-        _ensureAvatar(e.value.otherUser, e.key);
-      }
-    }
   }
   
 

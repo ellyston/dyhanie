@@ -48,6 +48,9 @@ class AvatarCache {
     }
 
     try {
+      if (!DyhanieApi.instance.isConnected) {
+        await DyhanieApi.instance.connect();
+      }
       final b64 = await DyhanieApi.instance.avatarGet(u);
       if (b64 == null || b64.isEmpty) return null;
       await save(u, b64);
