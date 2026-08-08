@@ -141,7 +141,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
     });
     _filter();
-    _loadAvatarsFor(contacts);
+    _loadAvatarsFor(List<String>.from(contacts));
   }
 
   Future<void> _loadAvatarsFor(List<String> names) async {
@@ -681,7 +681,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                 : null,
                             child: contactAvatars[name] == null
                                 ? Text(
-                                    name[0].toUpperCase(),
+                                    name.isNotEmpty
+                                        ? name[0].toUpperCase()
+                                        : '?',
                                     style: FontService.style(color: onSurf),
                                   )
                                 : null,

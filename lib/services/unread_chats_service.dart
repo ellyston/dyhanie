@@ -63,7 +63,6 @@ class UnreadChatsService {
 
   void stopListening() {
     _eventSub?.cancel();
-    _eventSub = null;
   }
 
   Future<void> add(String dialogId, int delta) async {

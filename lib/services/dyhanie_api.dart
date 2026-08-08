@@ -337,5 +337,6 @@ class DyhanieApi {
     final badge = p['badge'] is int ? p['badge'] as int : nudges.length;
     return {'nudges': nudges, 'badge': badge};
   }
+  
 
 }

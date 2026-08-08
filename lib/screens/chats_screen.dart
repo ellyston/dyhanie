@@ -93,8 +93,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
           );
 
           for (final id in items.keys.toList()) {
-            if (!keep.contains(id)) {
+            if (!map.containsKey(id) || (map[id] as int?? 0) <= 0) {
               final prev = items[id]!;
+              if (prev.incomingCount == 0 && !prev.comeOnline) continue;
               items[id] = _ChatItem(
                 dialogId: prev.dialogId,
                 otherUser: prev.otherUser,
@@ -104,7 +105,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 hasOutbox: prev.hasOutbox,
                 isSaved: prev.isSaved,
                 preview: prev.preview,
-                avatarBytes: prev?.avatarBytes,
+                avatarBytes: prev.avatarBytes,
               );
             }
           }
@@ -117,26 +118,34 @@ class _ChatsScreenState extends State<ChatsScreen> {
       setState(() {
         for (final e in map.entries) {
           final prev = items[e.key];
-          if (prev == null) {
-            final other =
-                _otherFromDialogId(e.key, widget.myUsername) ?? e.key;
-            items[e.key] = _ChatItem(
-              dialogId: e.key,
-              otherUser: other,
-              incomingCount: e.value,
-              comeOnline: false,
-              updatedAt: DateTime.now().millisecondsSinceEpoch,
-              hasOutbox: false,
-              isSaved: false,
-              preview: '',
-              avatarBytes: prev?.avatarBytes,
-            );
-          } else {
-            items[e.key] = _ChatItem(
+          final other = prev?.otherUser ??
+              _otherFromDialogId(e.key, widget.myUsername) ??
+              e.key;
+          final count = e.value is int
+              ? e.value as int
+              : int.tryParse('${e.value}') ?? 0;
+          items[e.key] = _ChatItem(
+            dialogId: e.key,
+            otherUser: other,
+            incomingCount: count,
+            comeOnline: prev?.comeOnline ?? false,
+            updatedAt: prev?.updatedAt ??
+                DateTime.now().millisecondsSinceEpoch,
+            hasOutbox: prev?.hasOutbox ?? false,
+            isSaved: prev?.isSaved ?? false,
+            preview: prev?.preview ?? '',
+            avatarBytes: prev?.avatarBytes,
+          );
+        }
+        for (final id in items.keys.toList()) {
+          if (!map.containsKey(id) || (map[id] ?? 0) <= 0) {
+            final prev = items[id]!;
+            if (prev.incomingCount == 0 && !prev.comeOnline) continue;
+            items[id] = _ChatItem(
               dialogId: prev.dialogId,
               otherUser: prev.otherUser,
-              incomingCount: e.value,
-              comeOnline: prev.comeOnline,
+              incomingCount: 0,
+              comeOnline: false,
               updatedAt: prev.updatedAt,
               hasOutbox: prev.hasOutbox,
               isSaved: prev.isSaved,
@@ -205,6 +214,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
         );
       }
     });
+    for (final e in items.entries) {
+      if (e.value.otherUser.isNotEmpty) {
+        _ensureAvatar(e.value.otherUser, e.key);
+      }
+    }
+
   }
 
   Future<void> _loadLocalPending() async {
@@ -266,9 +281,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   void _open(_ChatItem item) {
     UnreadChatsService.instance.clear(item.dialogId);
-    DyhanieApi.instance
-        .chatNudgeAck(room: item.dialogId)
-        .catchError((_) {});
+    DyhanieApi.instance.chatNudgeAck(room: item.dialogId).catchError((_) {});
+
+    setState(() {
+      final prev = items[item.dialogId];
+      if (prev != null) {
+        items[item.dialogId] = _ChatItem(
+          dialogId: prev.dialogId,
+          otherUser: prev.otherUser,
+          incomingCount: 0,
+          comeOnline: false,
+          updatedAt: prev.updatedAt,
+          hasOutbox: prev.hasOutbox,
+          isSaved: prev.isSaved,
+          preview: prev.preview,
+          avatarBytes: prev.avatarBytes,
+        );
+      }
+    });
 
     Navigator.push(
       context,
@@ -279,6 +309,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
         ),
       ),
     ).then((_) async {
+      await UnreadChatsService.instance.clear(item.dialogId);
+      if (!mounted) return;
+      setState(() {
+        final prev = items[item.dialogId];
+        if (prev != null) {
+          items[item.dialogId] = _ChatItem(
+            dialogId: prev.dialogId,
+            otherUser: prev.otherUser,
+            incomingCount: 0,
+            comeOnline: false,
+            updatedAt: prev.updatedAt,
+            hasOutbox: prev.hasOutbox,
+            isSaved: prev.isSaved,
+            preview: prev.preview,
+            avatarBytes: prev.avatarBytes,
+          );
+        }
+      });
       await _loadSaved();
       await _loadLocalPending();
     });
