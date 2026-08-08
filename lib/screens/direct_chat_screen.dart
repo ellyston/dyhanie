@@ -273,12 +273,16 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final scheme = Theme.of(context).colorScheme;
+    final onSurf = scheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: bg, // было Colors.black
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: bg, // было Colors.black
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: onSurf), // было Colors.white
           onPressed: _leave,
         ),
         title: Column(
@@ -286,11 +290,16 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
           children: [
             Text(
               '@${widget.otherUser}',
-              style: const TextStyle(color: Colors.white, fontSize: 18),
+              style: TextStyle(color: onSurf, fontSize: 18), // было Colors.white
             ),
             Text(
-              statusLine.isEmpty ? (otherOnline ? 'онлайн' : 'оффлайн') : statusLine,
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
+              statusLine.isEmpty
+                  ? (otherOnline ? 'онлайн' : 'оффлайн')
+                  : statusLine,
+              style: TextStyle(
+                color: onSurf.withValues(alpha: 0.55), // было Colors.white54
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -299,23 +308,28 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         children: [
           Container(
             width: double.infinity,
-            color: Colors.white10,
+            color: onSurf.withValues(alpha: 0.06),
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
             child: Text(
               otherOnline
                   ? 'Собеседник в сети — доставка возможна'
                   : 'Собеседник оффлайн — текст у вас, ему уйдёт сигнал «зайди в чат»',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
+              style: TextStyle(
+                color: onSurf.withValues(alpha: 0.55),
+                fontSize: 12,
+              ),
             ),
           ),
           Expanded(
             child: messages.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       'Напишите сообщение.\nОно будет у собеседника после открытия чата.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white38),
+                      style: TextStyle(
+                        color: onSurf.withValues(alpha: 0.38),
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -329,15 +343,21 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                       final delivered = msg['delivered'] == true;
 
                       return Align(
-                        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                        alignment:
+                            isMe ? Alignment.centerRight : Alignment.centerLeft,
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                           constraints: BoxConstraints(
                             maxWidth: MediaQuery.of(context).size.width * 0.75,
                           ),
                           decoration: BoxDecoration(
-                            color: isMe ? Colors.white24 : Colors.white10,
+                            color: isMe
+                                ? onSurf.withValues(alpha: 0.16)
+                                : onSurf.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Column(
@@ -345,17 +365,21 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                             children: [
                               Text(
                                 msg['text']?.toString() ?? '',
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(color: onSurf),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 pending
                                     ? 'ожидает открытия чата'
-                                    : (delivered ? 'прочитано' : 'доставлено в чат'),
+                                    : (delivered
+                                        ? 'прочитано'
+                                        : 'доставлено в чат'),
                                 style: TextStyle(
                                   color: pending
                                       ? Colors.orangeAccent
-                                      : (delivered ? Colors.lightBlueAccent : Colors.white38),
+                                      : (delivered
+                                          ? Colors.lightBlueAccent
+                                          : onSurf.withValues(alpha: 0.38)),
                                   fontSize: 10,
                                 ),
                               ),
@@ -368,16 +392,18 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
           ),
           Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 8, 20),
-            color: Colors.black54,
+            color: scheme.surfaceContainerHigh,
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: onSurf),
+                    decoration: InputDecoration(
                       hintText: 'Сообщение...',
-                      hintStyle: TextStyle(color: Colors.white30),
+                      hintStyle: TextStyle(
+                        color: onSurf.withValues(alpha: 0.3),
+                      ),
                       border: InputBorder.none,
                     ),
                     onSubmitted: (_) => _send(),
@@ -387,7 +413,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                   onPressed: sending ? null : _send,
                   icon: Icon(
                     Icons.send,
-                    color: sending ? Colors.white24 : Colors.white,
+                    color: sending
+                        ? onSurf.withValues(alpha: 0.24)
+                        : onSurf,
                   ),
                 ),
               ],
