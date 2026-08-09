@@ -10,12 +10,14 @@ class CallWebRTCService {
   final String username;
   final String otherUser;
   final bool isCaller;
+  final Map? initialOffer;
 
   CallWebRTCService({
     required this.roomCode,
     required this.username,
     required this.otherUser,
     required this.isCaller,
+    this.initialOffer,
   });
 
   RTCPeerConnection? _pc;
@@ -88,6 +90,9 @@ class CallWebRTCService {
       await _createOffer();
     } else {
       _statusCtrl.add('waiting_offer');
+      if (initialOffer != null) {
+        await _onOffer(initialOffer);
+      }
     }
   }
 
@@ -158,6 +163,7 @@ class CallWebRTCService {
       'from': username,
     });
     _statusCtrl.add('answer_sent');
+    await _flushCandidates();
   }
 
   Future<void> _onAnswer(dynamic data) async {
@@ -171,21 +177,34 @@ class CallWebRTCService {
     _answerSet = true;
     _remoteSet = true;
     _statusCtrl.add('answer_set');
+    await _flushCandidates();
   }
 
   Future<void> _onCandidate(dynamic data) async {
     if (data is! Map || _pc == null) return;
+    final c = RTCIceCandidate(
+      data['candidate']?.toString(),
+      data['sdpMid']?.toString(),
+      data['sdpMLineIndex'] is int
+          ? data['sdpMLineIndex'] as int
+          : int.tryParse('${data['sdpMLineIndex']}'),
+    );
+    if (!_remoteSet) {
+      _pendingCandidates.add(c);
+      return;
+    }
     try {
-      await _pc!.addCandidate(
-        RTCIceCandidate(
-          data['candidate']?.toString(),
-          data['sdpMid']?.toString(),
-          data['sdpMLineIndex'] is int
-              ? data['sdpMLineIndex'] as int
-              : int.tryParse('${data['sdpMLineIndex']}'),
-        ),
-      );
+      await _pc!.addCandidate(c);
     } catch (_) {}
+  }
+
+  Future<void> _flushCandidates() async {
+    for (final c in _pendingCandidates) {
+      try {
+        await _pc!.addCandidate(c);
+      } catch (_) {}
+    }
+    _pendingCandidates.clear();
   }
 
   Future<void> setMuted(bool muted) async {
@@ -226,4 +245,7 @@ class CallWebRTCService {
     _remoteStreamCtrl.close();
     _statusCtrl.close();
   }
+
+ final List<RTCIceCandidate> _pendingCandidates = [];
+
 }

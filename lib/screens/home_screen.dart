@@ -11,6 +11,7 @@ import '../services/font_service.dart';
 import '../services/icon_style_controller.dart';
 import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
+import '../services/incoming_call_service.dart';
 import 'auto_lock_settings_screen.dart';
 import 'chats_screen.dart';
 import 'contacts_screen.dart';
@@ -78,6 +79,12 @@ class _HomeScreenState extends State<HomeScreen> {
       username = name;
       avatarBytes = bytes;
     });
+    if (name.isNotEmpty) {
+      IncomingCallService.instance.attach(
+        navKey: appNavigatorKey,
+        myUsername: name,
+      );
+    }
     _startBadgeListeners(name);
     if (name.isNotEmpty) {
       final shown = prefs.getBool('recovery_phrase_shown') ?? false;
@@ -159,9 +166,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _msgSignalSub?.cancel();
     _unreadSub?.cancel();
     super.dispose();
+    IncomingCallService.instance.detach();
   }
 
   void _logout() {
+    IncomingCallService.instance.detach();
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => const WelcomeScreen(goHomeOnContinue: true),

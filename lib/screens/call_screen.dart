@@ -14,6 +14,8 @@ class CallScreen extends StatefulWidget {
   final String username;
   final String? otherUser;
   final bool isIncoming;
+  /// SDP offer, если экран открыли уже по call_offer (иначе callee его не увидит).
+  final Map? initialOffer;
 
   const CallScreen({
     super.key,
@@ -21,6 +23,7 @@ class CallScreen extends StatefulWidget {
     required this.username,
     required this.otherUser,
     required this.isIncoming,
+    this.initialOffer,
   });
 
   @override
@@ -94,6 +97,7 @@ class _CallScreenState extends State<CallScreen> {
       username: widget.username,
       otherUser: other,
       isCaller: isCaller,
+      initialOffer: widget.initialOffer,
     );
 
     _remoteSub = _rtc!.remoteStream.listen(_attachRemote);
@@ -235,7 +239,7 @@ class _CallScreenState extends State<CallScreen> {
                       onTap: _toggleMute,
                     ),
                     _roundBtn(
-                      icon: AppIcons.call_end,
+                      icon: Icons.call_end,
                       color: Colors.redAccent,
                       onTap: _hangUp,
                       big: true,

@@ -21,6 +21,8 @@ import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
 import '../services/avatar_cache.dart';
 import '../services/icon_style_service.dart';
+import '../services/incoming_call_service.dart';
+import '../services/outbox_service.dart';
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
 
@@ -46,6 +48,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _dialogSignals = DialogSignalService();
   final _wipe = ChatWipeService();
   final _history = ChatHistoryService();
+  final _outbox = OutboxService();
+  bool _flushingOutbox = false;
 
   List<Map<String, dynamic>> messages = [];
   final _timers = <String, Timer>{};
@@ -55,6 +59,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   StreamSubscription? _p2pMsgSub;
   StreamSubscription? _p2pStatusSub;
   StreamSubscription? _apiMsgSub;
+  StreamSubscription? _callSignalSub;
+  bool _openingCall = false;
+  
 
   P2PService? _p2p;
   bool p2pConnected = false;
@@ -222,10 +229,42 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
     await _startP2P(other);
     await _clearMyIncomingSignal();
+    await _loadOutboxIntoUi(other);
+  }
+
+  Future<void> _loadOutboxIntoUi(String other) async {
+    final dialogId = OutboxService.dialogIdFor(widget.username, other);
+    final pending = await _outbox.pendingForDialog(
+      dialogId: dialogId,
+      myUsername: widget.username,
+    );
+    if (pending.isEmpty || !mounted) return;
+    setState(() {
+      final keys = messages.map((m) => m['key']?.toString()).toSet();
+      for (final m in pending) {
+        if (keys.contains(m.id)) continue;
+        messages.add({
+          'key': m.id,
+          'text': m.text,
+          'username': widget.username,
+          'timestamp': m.timestamp,
+          'ttl': m.ttl,
+          'p2p': false,
+          'pending': true,
+          'replyText': m.replyText,
+          'replyUser': m.replyUser,
+          'image': m.image,
+          'status': 'pending',
+        });
+      }
+      messages.sort((a, b) =>
+          (a['timestamp'] as int).compareTo(b['timestamp'] as int));
+    });
   }
 
   @override
-  void initState() {
+  void initState() {   
+    IncomingCallService.instance.setChatHandlingRoom(widget.roomCode);
     super.initState();
     _loadChatConfig();
     p2pStatusText = L.t('none');
@@ -237,6 +276,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     Future.delayed(const Duration(milliseconds: 300), _loadSavedHistory);
     Future.delayed(const Duration(milliseconds: 200), _bootstrapPeer);
     _listenServerMessages();
+    _listenIncomingCalls();
     Future.delayed(const Duration(milliseconds: 400), _syncServerMessages);
     UnreadChatsService.instance.startListening(openRoomCode: widget.roomCode);
     UnreadChatsService.instance.clear(widget.roomCode);
@@ -325,6 +365,61 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _flushOutbox() async {
+    if (_flushingOutbox) return;
+    if (!p2pConnected || _p2p == null || !_p2p!.isOpen) return;
+
+    final other = otherUser ?? _otherFromRoomCode();
+    if (other == null) return;
+
+    _flushingOutbox = true;
+    try {
+      final dialogId = OutboxService.dialogIdFor(widget.username, other);
+      final pending = await _outbox.pendingForDialog(
+        dialogId: dialogId,
+        myUsername: widget.username,
+      );
+      if (pending.isEmpty) return;
+
+      final sentIds = <String>[];
+      for (final m in pending) {
+        try {
+          _p2p!.send(jsonEncode({
+            'type': 'msg',
+            'key': m.id,
+            'text': m.text,
+            'timestamp': m.timestamp,
+            'ttl': m.ttl,
+            'replyText': m.replyText,
+            'replyUser': m.replyUser,
+            'image': m.image,
+          }));
+          sentIds.add(m.id);
+        } catch (_) {}
+      }
+
+      if (sentIds.isEmpty) return;
+      await _outbox.removeByIds(sentIds);
+
+      if (!mounted) return;
+      setState(() {
+        for (final msg in messages) {
+          final k = msg['key']?.toString();
+          if (k != null && sentIds.contains(k)) {
+            msg['status'] = 'sent';
+            msg['p2p'] = true;
+            msg['pending'] = false;
+          }
+        }
+      });
+      if (!wipeOnExit) {
+        await _history.save(widget.roomCode, messages);
+      }
+    } finally {
+      _flushingOutbox = false;
+    }
+  }
+
   
 
   Future<void> _startP2P(String other) async {
@@ -350,6 +445,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _updateConnectionMode();
           _saveChatConfig();
         }
+        _flushOutbox(); // ← добавить
         return;
       }
 
@@ -616,19 +712,46 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final text = _controller.text.trim();
     if (text.isEmpty && imageB64 == null) return;
 
-    final canP2P = p2pConnected && _p2p != null;
+    final other = otherUser ?? _otherFromRoomCode();
+    final canP2P = p2pConnected && _p2p != null && _p2p!.isOpen;
     final canServer = !blockServerMessages;
-    if (!canP2P && !canServer) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L.t('no_p2p_server_blocked'))),
-      );
+
+    // hard/soft и нет P2P → outbox (не теряем сообщение)
+    final useOutbox = !canP2P && blockServerMessages;
+
+    if (!canP2P && !canServer && !useOutbox) {
+      // сюда почти не попадём
       return;
     }
 
-    final viaP2P = canP2P;
-    final key =
-        '${viaP2P ? 'p2p' : 'srv'}_${DateTime.now().millisecondsSinceEpoch}';
+    if (useOutbox && other == null) {
+      // некому слать и некуда в outbox
+      return;
+    }
+
     final ts = DateTime.now().millisecondsSinceEpoch;
+    String key;
+    String status;
+
+    if (canP2P) {
+      key = 'p2p_$ts';
+      status = 'sent';
+    } else if (useOutbox) {
+      final ob = await _outbox.add(
+        from: widget.username,
+        to: other!,
+        text: text,
+        ttl: selectedTime,
+        image: imageB64,
+        replyText: replyTo?['text']?.toString(),
+        replyUser: replyTo?['username']?.toString(),
+      );
+      key = ob.id;
+      status = 'pending';
+    } else {
+      key = 'srv_$ts';
+      status = 'sent';
+    }
 
     final msg = {
       'key': key,
@@ -636,11 +759,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'username': widget.username,
       'timestamp': ts,
       'ttl': selectedTime,
-      'p2p': viaP2P,
+      'p2p': canP2P,
+      'pending': status == 'pending',
       'replyText': replyTo?['text'],
       'replyUser': replyTo?['username'],
       'image': imageB64,
-      'status': 'sent',
+      'status': status,
     };
 
     setState(() {
@@ -650,7 +774,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!isSavedChat && selectedTime > 0) _startTimer(msg);
     _scrollEnd();
 
-    if (viaP2P) {
+    if (canP2P) {
       _p2p!.send(jsonEncode({
         'type': 'msg',
         'key': key,
@@ -661,16 +785,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         'replyUser': msg['replyUser'],
         'image': imageB64,
       }));
-    } else {
-      final other = otherUser ?? _otherFromRoomCode();
-      if (other == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(L.t('no_connection'))),
-          );
-        }
-        return;
-      }
+    } else if (!useOutbox && canServer) {
+      if (other == null) return;
       final body = jsonEncode({
         'text': text,
         'ttl': selectedTime,
@@ -689,12 +805,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _knownServerKeys.add(key);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${L.t('error')}: $e')),
-          );
+          setState(() {
+            final i = messages.indexWhere((m) => m['key'] == key);
+            if (i >= 0) messages[i]['status'] = 'error';
+          });
         }
       }
     }
+    // useOutbox: уже в OutboxService, ждём P2P
 
     await _notifyDirectIncoming();
     _controller.clear();
@@ -832,9 +950,77 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     Navigator.pop(context);
   }
 
+
+  void _listenIncomingCalls() {
+    _callSignalSub?.cancel();
+    _callSignalSub = DyhanieApi.instance.events.listen((m) {
+      if (m['type']?.toString() != 'signal') return;
+      final p = m['payload'];
+      if (p is! Map) return;
+
+      final room = p['room']?.toString() ?? '';
+      if (room != widget.roomCode) return;
+
+      final from = p['from']?.toString() ?? '';
+      if (from.isEmpty || from == widget.username) return;
+
+      final kind = p['kind']?.toString() ?? '';
+      if (kind != 'call_offer') return;
+
+      // уже в звонке / открываем
+      if (callInProgress || _openingCall) return;
+
+      final data = p['data'];
+      Map? offer;
+      if (data is Map) {
+        offer = Map<String, dynamic>.from(data);
+      }
+
+      _openIncomingCall(from, offer);
+    });
+  }
+
+  Future<void> _openIncomingCall(String from, Map? offer) async {
+    if (!mounted) return;
+    _openingCall = true;
+    setState(() {
+      callInProgress = true;
+      otherUser ??= from;
+      callStatusBanner = L.t('call_connecting');
+    });
+    HapticFeedback.mediumImpact();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CallScreen(
+          roomCode: widget.roomCode,
+          username: widget.username,
+          otherUser: from,
+          isIncoming: true,
+          initialOffer: offer,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    setState(() {
+      callInProgress = false;
+      callStatusBanner = '';
+      _openingCall = false;
+    });
+  }
+
   void _startCall() {
-    if (otherUser == null) return;
-    if (callInProgress) return;
+    final peer = otherUser ?? _otherFromRoomCode();
+    if (peer == null || peer.isEmpty) return;
+    if (callInProgress || _openingCall) return;
+
+    setState(() {
+      otherUser = peer;
+      callInProgress = true;
+      callStatusBanner = L.t('call_calling');
+    });
 
     Navigator.push(
       context,
@@ -842,11 +1028,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         builder: (_) => CallScreen(
           roomCode: widget.roomCode,
           username: widget.username,
-          otherUser: otherUser,
+          otherUser: peer,
           isIncoming: false,
         ),
       ),
-    );
+    ).then((_) {
+      if (!mounted) return;
+      setState(() {
+        callInProgress = false;
+        callStatusBanner = '';
+      });
+    });
   }
 
   String _ttlLabel(int sec) {
@@ -1027,6 +1219,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    IncomingCallService.instance.setChatHandlingRoom(null);
     WidgetsBinding.instance.removeObserver(this);
     UnreadChatsService.instance.startListening();
     UnreadChatsService.instance.clear(widget.roomCode);
@@ -1034,6 +1227,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _p2pStatusSub?.cancel();
     _apiMsgSub?.cancel();
     _p2p?.dispose();
+    _callSignalSub?.cancel();
     for (final t in _timers.values) {
       t.cancel();
     }

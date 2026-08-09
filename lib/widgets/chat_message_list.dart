@@ -211,7 +211,7 @@ class ChatMessageList extends StatelessWidget {
             background: Container(
               alignment: Alignment.centerRight,
               padding: const EdgeInsets.only(right: 20),
-              child: const Icon(AppIcons.delete_outline, color: Colors.redAccent),
+              child: Icon(AppIcons.wipe, color: Colors.redAccent),
             ),
             child: bubble,
           );

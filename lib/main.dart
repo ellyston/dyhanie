@@ -4,6 +4,7 @@ import 'screens/splash_screen.dart';
 import 'services/font_controller.dart';
 import 'services/font_service.dart';
 import 'services/icon_style_controller.dart';
+import 'services/incoming_call_service.dart';
 import 'services/locale_controller.dart';
 import 'services/locale_service.dart';
 import 'services/theme_controller.dart';
@@ -13,13 +14,11 @@ import 'services/webrtc_ice.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-
   await LocaleController.instance.init();
   await FontController.instance.init();
   await IconStyleController.instance.init();
   await ThemeController.instance.init();
   await WebRtcIce.load();
-
 
   runApp(const MyApp());
 }
@@ -79,8 +78,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final dark = _buildTheme(ThemeService.darkTheme());
 
         return MaterialApp(
-          // ключ сбрасывает дерево при смене языка/шрифта/иконок/темы
+          // сброс дерева при смене языка / шрифта / иконок / темы
           key: ValueKey('app_${localeCode}_${fontCode}_${iconCode}_$themeCode'),
+          navigatorKey: appNavigatorKey,
           debugShowCheckedModeBanner: false,
           title: L.t('app_name'),
           theme: light,
