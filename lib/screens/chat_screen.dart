@@ -93,7 +93,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String callStatusBanner = '';
 
   final timeOptions = [0, 5, 10, 15, 30, 60, 120, 300, 600];
-
   bool _looksLikeDirectDialog(String code) {
     return code.contains('_') && code.length > 6;
   }
@@ -123,7 +122,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         mine = base64Decode(clean);
       } catch (_) {}
     }
-
     Uint8List? otherBytes;
     final other = otherUser ?? _otherFromRoomCode();
     if (other != null && other.isNotEmpty) {
@@ -600,49 +598,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-  Map<String, dynamic>? _parseServerPayload(Map p) {
-    final msgId = p['msg_id']?.toString() ?? '';
-    if (msgId.isEmpty) return null;
-    if (_knownServerKeys.contains(msgId)) return null;
-
-    final room = p['room']?.toString() ?? '';
-    if (room != widget.roomCode) return null;
-
-    final from = p['from']?.toString() ?? '';
-    if (from.isEmpty || from == widget.username) return null;
-
-    final body = p['body']?.toString() ?? '';
-    String text = body;
-    String? image;
-    String? replyText;
-    String? replyUser;
-    int ttl = selectedTime;
-    try {
-      if (body.startsWith('{')) {
-        final j = jsonDecode(body) as Map<String, dynamic>;
-        text = j['text']?.toString() ?? '';
-        image = j['image']?.toString();
-        replyText = j['replyText']?.toString();
-        replyUser = j['replyUser']?.toString();
-        if (j['ttl'] is int) ttl = j['ttl'] as int;
-      }
-    } catch (_) {}
-
-    return {
-      'key': msgId,
-      'text': text,
-      'username': from,
-      'timestamp': p['created_at'] is int
-          ? p['created_at'] as int
-          : DateTime.now().millisecondsSinceEpoch,
-      'ttl': ttl,
-      'p2p': false,
-      'replyText': replyText,
-      'replyUser': replyUser,
-      'image': image,
-      'status': 'delivered',
-    };
-  }
 
   void _ingestServerMsg(Map p) {
     if (blockServerMessages) return;
