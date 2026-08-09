@@ -48,19 +48,35 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
     try {
       await DyhanieApi.instance.connect();
+
+      // понятная проверка имени до register
+      final taken = await DyhanieApi.instance.usernameExists(username);
+      if (taken) {
+        if (!mounted) return;
+        setState(() {
+          _error = L.t('username_taken'); // или ваш ключ
+          _saving = false;
+        });
+        return;
+      }
+
       await DyhanieApi.instance.usernameRegister(username);
       await DyhanieApi.instance.sessionBind(username);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', username);
 
+      // аватар: локально всегда; сервер — best effort
       if (_avatar != null) {
         final b64 = base64Encode(_avatar!);
-        // локально
         await prefs.setString('avatar', b64);
         await AvatarCache.saveBytes(username, _avatar!);
-        // сервер (нужен bind — уже сделан выше)
-        await DyhanieApi.instance.avatarSet(b64);
+        try {
+          await DyhanieApi.instance.avatarSet(b64);
+        } catch (_) {
+          // не валим регистрацию: имя уже создано
+          // можно показать мягкое предупреждение на Home позже
+        }
       }
 
       if (!mounted) return;
@@ -76,8 +92,18 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      final s = e.toString();
       setState(() {
-        _error = e.toString();
+        // не смешивать с «имя занято», если это аватар
+        if (s.contains('AVATAR')) {
+          _error = L.t('error'); // или avatar_upload_failed
+        } else if (s.contains('EXISTS') ||
+            s.contains('TAKEN') ||
+            s.contains('USERNAME')) {
+          _error = L.t('username_taken');
+        } else {
+          _error = s;
+        }
         _saving = false;
       });
     }

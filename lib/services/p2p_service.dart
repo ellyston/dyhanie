@@ -20,14 +20,21 @@ class P2PService {
   Stream<String> get status => _statusController.stream;
 
   StreamSubscription? _signalSub;
+  Timer? _reofferTimer;
 
   bool _isOfferer = false;
   bool _closed = false;
   bool _remoteSet = false;
   bool _opened = false;
   bool _offerHandled = false;
+  int _offerRound = 0;
 
   final List<RTCIceCandidate> _pendingCandidates = [];
+
+  static const _reofferDelays = <Duration>[
+    Duration(milliseconds: 2500),
+    Duration(seconds: 5),
+  ];
 
   P2PService({
     required this.roomCode,
@@ -84,16 +91,45 @@ class P2PService {
     if (_isOfferer) {
       await Future.delayed(const Duration(milliseconds: 800));
       if (_closed || _pc == null) return;
+      await _createAndSendOffer();
+      _armReoffers();
+    } else {
+      _statusController.add('waiting_offer');
+    }
+  }
+
+  Future<void> _createAndSendOffer() async {
+    if (_closed || _pc == null || _opened) return;
+    try {
       final offer = await _pc!.createOffer();
       await _pc!.setLocalDescription(offer);
       await _sendSignal('offer', {
         'type': offer.type,
         'sdp': offer.sdp,
       });
-      _statusController.add('offer_sent');
-    } else {
-      _statusController.add('waiting_offer');
+      _offerRound++;
+      _statusController.add(
+        _offerRound <= 1 ? 'offer_sent' : 'offer_resend_$_offerRound',
+      );
+    } catch (e) {
+      _statusController.add('offer_error:$e');
     }
+  }
+
+  void _armReoffers() {
+    _reofferTimer?.cancel();
+    if (!_isOfferer || _closed) return;
+
+    void schedule(int index) {
+      if (index >= _reofferDelays.length) return;
+      _reofferTimer = Timer(_reofferDelays[index], () async {
+        if (_closed || _opened) return;
+        await _createAndSendOffer();
+        schedule(index + 1);
+      });
+    }
+
+    schedule(0);
   }
 
   Future<void> _sendSignal(String kind, dynamic data) async {
@@ -131,6 +167,12 @@ class P2PService {
 
   Future<void> _handleSdp(String kind, dynamic data) async {
     if (_pc == null || data is! Map) return;
+    if (_opened) return;
+
+    if (kind == 'offer' && _offerHandled && _remoteSet) {
+      _offerHandled = false;
+      _remoteSet = false;
+    }
     if (kind == 'offer' && _offerHandled) return;
 
     try {
@@ -195,13 +237,16 @@ class P2PService {
   void _markOpen() {
     if (_opened || _closed) return;
     _opened = true;
+    _reofferTimer?.cancel();
+    _reofferTimer = null;
     _statusController.add('p2p_open');
   }
 
   void _setupChannel(RTCDataChannel channel) {
     channel.onMessage = (message) {
-      if (message.text != null && message.text!.isNotEmpty) {
-        _messageController.add(message.text!);
+      final t = message.text;
+      if (t.isNotEmpty) {
+        _messageController.add(t);
       }
     };
     channel.onDataChannelState = (state) {
@@ -226,6 +271,8 @@ class P2PService {
 
   Future<void> dispose() async {
     _closed = true;
+    _reofferTimer?.cancel();
+    _reofferTimer = null;
     await _signalSub?.cancel();
     _signalSub = null;
     try {
