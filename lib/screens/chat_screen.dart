@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -365,6 +364,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _syncServerMessages() async {
+    if (blockServerMessages) return;
+    try {
+      final list = await DyhanieApi.instance.msgSync();
+      for (final p in list) {
+        _ingestServerMsg(p);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _flushOutbox() async {
     if (_flushingOutbox) return;
     if (!p2pConnected || _p2p == null || !_p2p!.isOpen) return;
@@ -438,9 +447,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {
             p2pConnected = true;
-            if (serverRelayMode == ServerRelayMode.open) {
-              serverRelayMode = ServerRelayMode.soft;
-            }
+          
           });
           _updateConnectionMode();
           _saveChatConfig();
@@ -698,40 +705,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
 
-  Future<void> _syncServerMessages() async {
-    if (blockServerMessages) return;
-    try {
-      final list = await DyhanieApi.instance.msgSync();
-      for (final p in list) {
-        _ingestServerMsg(p);
-      }
-    } catch (_) {}
-  }
-
   Future<void> _send({String? imageB64}) async {
     final text = _controller.text.trim();
     if (text.isEmpty && imageB64 == null) return;
 
     final other = otherUser ?? _otherFromRoomCode();
-    final canP2P = p2pConnected && _p2p != null && _p2p!.isOpen;
-    final canServer = !blockServerMessages;
+    final canP2P =
+        p2pConnected && _p2p != null && _p2p!.isOpen;
 
-    // hard/soft и нет P2P → outbox (не теряем сообщение)
-    final useOutbox = !canP2P && blockServerMessages;
+    // open — сервер всегда можно; soft/hard — сервер выкл
+    final canServer = serverRelayMode == ServerRelayMode.open;
+
+    // outbox только hard (и по желанию soft). НЕ open.
+    final useOutbox = !canP2P &&
+        (serverRelayMode == ServerRelayMode.hard ||
+            serverRelayMode == ServerRelayMode.soft);
 
     if (!canP2P && !canServer && !useOutbox) {
-      // сюда почти не попадём
       return;
     }
-
-    if (useOutbox && other == null) {
-      // некому слать и некуда в outbox
+    if ((canServer || useOutbox) && other == null) {
       return;
     }
 
     final ts = DateTime.now().millisecondsSinceEpoch;
-    String key;
-    String status;
+    late String key;
+    late String status;
 
     if (canP2P) {
       key = 'p2p_$ts';
@@ -749,6 +748,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       key = ob.id;
       status = 'pending';
     } else {
+      // open + нет P2P → сервер
       key = 'srv_$ts';
       status = 'sent';
     }
@@ -785,8 +785,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         'replyUser': msg['replyUser'],
         'image': imageB64,
       }));
-    } else if (!useOutbox && canServer) {
-      if (other == null) return;
+    } else if (canServer && !useOutbox) {
       final body = jsonEncode({
         'text': text,
         'ttl': selectedTime,
@@ -797,7 +796,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       try {
         await DyhanieApi.instance.msgSend(
           room: widget.roomCode,
-          to: other,
+          to: other!,
           msgId: key,
           body: body,
           contentType: imageB64 != null ? 'image' : 'text',
@@ -812,7 +811,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       }
     }
-    // useOutbox: уже в OutboxService, ждём P2P
 
     await _notifyDirectIncoming();
     _controller.clear();
@@ -821,7 +819,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await _history.save(widget.roomCode, messages);
     }
   }
-
+  
   Future<void> _attach() async {
     final img = await _picker.pickImage(
       source: ImageSource.gallery,

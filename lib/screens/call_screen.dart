@@ -7,7 +7,9 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../services/call_webrtc_service.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
-import '../services/icon_style_service.dart';
+import '../services/dyhanie_api.dart';
+
+StreamSubscription? _peerSignalSub;
 
 class CallScreen extends StatefulWidget {
   final String roomCode;
@@ -38,7 +40,8 @@ class _CallScreenState extends State<CallScreen> {
   bool muted = false;
   bool speakerOn = false;
   bool connected = false;
-  bool _closing = false;
+  bool _closing = false; 
+  bool _accepted = false; // входящий ещё не принял
 
   Timer? _timer;
   Timer? _ringTimeout;
@@ -51,16 +54,37 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void initState() {
     super.initState();
-    statusText = L.t('call_connecting');
     _initRenderer();
-    _watchCallStatus();
-    _startRtc();
+    _listenPeerSignals();
+
+    if (widget.isIncoming) {
+      _accepted = false;
+      statusText = L.t('incoming_call');
+    } else {
+      _accepted = true;
+      statusText = L.t('call_connecting');
+      _startRtc();
+    }
 
     _ringTimeout = Timer(const Duration(seconds: 45), () async {
       if (!connected && mounted && !_closing) {
         await _finish();
       }
+    }); 
+  }
+
+  Future<void> _accept() async {
+    if (_accepted || _closing) return;
+    setState(() {
+      _accepted = true;
+      statusText = L.t('call_connecting');
     });
+    await _startRtc();
+  }
+
+  Future<void> _decline() async {
+    await _notifyPeer('call_decline');
+    await _finish(notifyPeer: false);
   }
 
   Future<void> _initRenderer() async {
@@ -78,9 +102,61 @@ class _CallScreenState extends State<CallScreen> {
     HapticFeedback.lightImpact();
   }
 
-  void _watchCallStatus() {
-   //статус звонка через RTDB больше не слушаем
+  void _listenPeerSignals() {
+    _peerSignalSub?.cancel();
+    final other = widget.otherUser;
+    if (other == null || other.isEmpty) return;
+
+    _peerSignalSub = DyhanieApi.instance.events.listen((m) {
+      if (_closing) return;
+      if (m['type']?.toString() != 'signal') return;
+      final p = m['payload'];
+      if (p is! Map) return;
+      if (p['room']?.toString() != widget.roomCode) return;
+      if (p['from']?.toString() != other) return;
+
+      final kind = p['kind']?.toString() ?? '';
+      if (kind == 'call_decline' || kind == 'call_hangup') {
+        if (mounted) {
+          setState(() => statusText = L.t('decline_call'));
+        }
+        _finish(notifyPeer: false);
+      }
+    });
   }
+
+  Future<void> _notifyPeer(String kind) async {
+    final other = widget.otherUser;
+    if (other == null || other.isEmpty) return;
+    try {
+      await DyhanieApi.instance.signal(
+        room: widget.roomCode,
+        to: other,
+        kind: kind,
+        data: {'from': widget.username},
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _finish({bool notifyPeer = false}) async {
+    if (_closing) return;
+    _closing = true;
+    _timer?.cancel();
+    _ringTimeout?.cancel();
+    if (notifyPeer) {
+      await _notifyPeer('call_hangup');
+    }
+    await _rtc?.hangUp();
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _hangUp() async {
+    if (_closing) return;
+    await _finish(notifyPeer: true);
+  }
+
 
   Future<void> _startRtc() async {
     final other = widget.otherUser;
@@ -88,6 +164,8 @@ class _CallScreenState extends State<CallScreen> {
       setState(() => statusText = L.t('call_no_peer'));
       return;
     }
+
+    
 
     final isCaller = !widget.isIncoming;
 
@@ -158,21 +236,6 @@ class _CallScreenState extends State<CallScreen> {
     await _rtc?.setSpeaker(speakerOn);
   }
 
-  Future<void> _hangUp() async {
-    if (_closing) return;
-    await _finish();
-  }
-
-  Future<void> _finish() async {
-    if (_closing) return;
-    _closing = true;
-    _timer?.cancel();
-    _ringTimeout?.cancel();
-    await _rtc?.hangUp();
-    if (mounted && Navigator.canPop(context)) {
-      Navigator.pop(context);
-    }
-  }
 
   @override
   void dispose() {
@@ -184,6 +247,7 @@ class _CallScreenState extends State<CallScreen> {
     _remoteRenderer.srcObject = null;
     _remoteRenderer.dispose();
     _rtc?.dispose();
+    _peerSignalSub?.cancel();
     super.dispose();
   }
 
@@ -227,33 +291,55 @@ class _CallScreenState extends State<CallScreen> {
                   ),
                 ),
                 const Spacer(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _roundBtn(
-                      icon: muted ? Icons.mic_off : Icons.mic,
-                      color: muted
-                          ? Colors.orangeAccent
-                          : onSurf.withValues(alpha: 0.2),
-                      label: L.t('mic'),
-                      onTap: _toggleMute,
-                    ),
-                    _roundBtn(
-                      icon: Icons.call_end,
-                      color: Colors.redAccent,
-                      onTap: _hangUp,
-                      big: true,
-                    ),
-                    _roundBtn(
-                      icon: speakerOn ? Icons.volume_up : Icons.hearing,
-                      color: speakerOn
-                          ? Colors.blueAccent
-                          : onSurf.withValues(alpha: 0.2),
-                      label: speakerOn ? L.t('speaker') : L.t('earpiece'),
-                      onTap: _toggleSpeaker,
-                    ),
-                  ],
-                ),
+                if (widget.isIncoming && !_accepted)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _roundBtn(
+                        icon: Icons.call_end,
+                        color: Colors.redAccent,
+                        label: L.t('decline_call'),
+                        onTap: _decline,
+                        big: true,
+                      ),
+                      _roundBtn(
+                        icon: Icons.call,
+                        color: Colors.green,
+                        label: L.t('accept_call'),
+                        onTap: _accept,
+                        big: true,
+                      ),
+                    ],
+                  )
+                else
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _roundBtn(
+                        icon: muted ? Icons.mic_off : Icons.mic,
+                        color: muted
+                            ? Colors.orangeAccent
+                            : onSurf.withValues(alpha: 0.2),
+                        label: L.t('mic'),
+                        onTap: _toggleMute,
+                      ),
+                      _roundBtn(
+                        icon: Icons.call_end,
+                        color: Colors.redAccent,
+                        onTap: _hangUp,
+                        big: true,
+                      ),
+                      _roundBtn(
+                        icon: speakerOn ? Icons.volume_up : Icons.hearing,
+                        color: speakerOn
+                            ? Colors.blueAccent
+                            : onSurf.withValues(alpha: 0.2),
+                        label: speakerOn ? L.t('speaker') : L.t('earpiece'),
+                        onTap: _toggleSpeaker,
+                      ),
+                    ],
+                  ),
+
                 const SizedBox(height: 48),
               ],
             ),

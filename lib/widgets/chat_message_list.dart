@@ -39,6 +39,25 @@ class ChatMessageList extends StatelessWidget {
 
   Widget _statusIcon(Map msg, Color muted) {
     if (msg['username'] != myUsername) return const SizedBox.shrink();
+
+    final status = msg['status']?.toString() ?? '';
+    final pending = msg['pending'] == true || status == 'pending';
+
+    if (pending) {
+      return Icon(
+        Icons.schedule,
+        size: 14,
+        color: Colors.orangeAccent.withValues(alpha: 0.9),
+      );
+    }
+    if (status == 'error') {
+      return const Icon(
+        Icons.error_outline,
+        size: 14,
+        color: Colors.redAccent,
+      );
+    }
+
     final ts = msg['timestamp'] as int? ?? 0;
     final read = otherLastRead != null && otherLastRead! >= ts;
     return Icon(
@@ -72,6 +91,9 @@ class ChatMessageList extends StatelessWidget {
         final rem = remaining[key];
         final text = msg['text']?.toString() ?? '';
         final isP2P = msg['p2p'] == true;
+        final status = msg['status']?.toString() ?? '';
+        final isPending = msg['pending'] == true || status == 'pending';
+        final isError = status == 'error';
         final img = msg['image']?.toString();
         final ts = msg['timestamp'] as int? ?? 0;
 
@@ -162,11 +184,29 @@ class ChatMessageList extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        isP2P ? L.t('p2p_connected') : L.t('via_server'),
+                        () {
+                          final status = msg['status']?.toString() ?? '';
+                          final pending =
+                              msg['pending'] == true || status == 'pending';
+                          if (pending) return L.t('waiting_p2p');
+                          if (status == 'error') return L.t('error');
+                          if (isP2P) return L.t('p2p_connected');
+                          return L.t('via_server');
+                        }(),
                         style: FontService.style(
-                          color: isP2P
-                              ? Colors.greenAccent.withValues(alpha: 0.8)
-                              : onSurf.withValues(alpha: 0.3),
+                          color: () {
+                            final status = msg['status']?.toString() ?? '';
+                            final pending =
+                                msg['pending'] == true || status == 'pending';
+                            if (pending) {
+                              return Colors.orangeAccent.withValues(alpha: 0.9);
+                            }
+                            if (status == 'error') return Colors.redAccent;
+                            if (isP2P) {
+                              return Colors.greenAccent.withValues(alpha: 0.8);
+                            }
+                            return onSurf.withValues(alpha: 0.3);
+                          }(),
                           fontSize: 10,
                         ),
                       ),
