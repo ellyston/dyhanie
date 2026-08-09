@@ -1,8 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// ICE / TURN — часть P2P-туннеля.
-/// Не связан с [blockServerMessages] (тот флаг только про relay сообщений в RTDB).
-///
+/// Не связан с [blockServerMessages] (тот флаг только про relay сообщений).
 class WebRtcIce {
   WebRtcIce._();
 
@@ -12,24 +11,43 @@ class WebRtcIce {
   static const _kStunUrls = 'webrtc_stun_urls';
   static const _kForceRelay = 'webrtc_force_relay';
 
-  /// STUN по умолчанию, если пользователь ничего не задал.
-  static const String defaultStun = 'stun:stun.l.google.com:19302';
+  /// Заводские значения (можно сменить в настройках ICE).
+  static const String defaultStun =
+      'stun:82.24.110.215:3478\nstun:stun.l.google.com:19302';
 
-  static String turnUrls = '';
-  static String turnUser = '';
-  static String turnPass = '';
+  static const String defaultTurn =
+      'turn:82.24.110.215:3478?transport=udp\n'
+      'turn:82.24.110.215:3478?transport=tcp';
+
+  static const String defaultTurnUser = 'dyhanie';
+  static const String defaultTurnPass = 'liza2007';
+
+  static String turnUrls = defaultTurn;
+  static String turnUser = defaultTurnUser;
+  static String turnPass = defaultTurnPass;
   static String stunUrls = defaultStun;
   static bool forceRelayOnly = false;
 
-  /// Читает настройки с диска в static-поля.
+  /// Читает настройки с диска; пустые → заводские.
   static Future<void> load() async {
     final p = await SharedPreferences.getInstance();
-    turnUrls = p.getString(_kTurnUrls) ?? '';
-    turnUser = p.getString(_kTurnUser) ?? '';
-    turnPass = p.getString(_kTurnPass) ?? '';
+
+    final turn = p.getString(_kTurnUrls);
+    turnUrls =
+        (turn == null || turn.trim().isEmpty) ? defaultTurn : turn.trim();
+
+    final user = p.getString(_kTurnUser);
+    turnUser =
+        (user == null || user.trim().isEmpty) ? defaultTurnUser : user.trim();
+
+    final pass = p.getString(_kTurnPass);
+    turnPass =
+        (pass == null || pass.isEmpty) ? defaultTurnPass : pass;
+
     final stun = p.getString(_kStunUrls);
     stunUrls =
         (stun == null || stun.trim().isEmpty) ? defaultStun : stun.trim();
+
     forceRelayOnly = p.getBool(_kForceRelay) ?? false;
   }
 
@@ -43,20 +61,32 @@ class WebRtcIce {
   }) async {
     final p = await SharedPreferences.getInstance();
     final stunVal = stun.trim().isEmpty ? defaultStun : stun.trim();
-    final turnVal = turn.trim();
-    final userVal = user.trim();
+    final turnVal = turn.trim().isEmpty ? defaultTurn : turn.trim();
+    final userVal = user.trim().isEmpty ? defaultTurnUser : user.trim();
+    final passVal = pass.isEmpty ? defaultTurnPass : pass;
 
     await p.setString(_kTurnUrls, turnVal);
     await p.setString(_kTurnUser, userVal);
-    await p.setString(_kTurnPass, pass);
+    await p.setString(_kTurnPass, passVal);
     await p.setString(_kStunUrls, stunVal);
     await p.setBool(_kForceRelay, forceRelay);
 
     turnUrls = turnVal;
     turnUser = userVal;
-    turnPass = pass;
+    turnPass = passVal;
     stunUrls = stunVal;
     forceRelayOnly = forceRelay;
+  }
+
+  /// Сброс к заводским.
+  static Future<void> resetToDefaults() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_kTurnUrls);
+    await p.remove(_kTurnUser);
+    await p.remove(_kTurnPass);
+    await p.remove(_kStunUrls);
+    await p.remove(_kForceRelay);
+    await load();
   }
 
   /// Конфиг для [createPeerConnection] — чат (P2P) и звонки.
@@ -79,6 +109,9 @@ class WebRtcIce {
 
     final map = <String, dynamic>{
       'iceServers': servers,
+      'iceCandidatePoolSize': 4,
+      'bundlePolicy': 'max-bundle',
+      'rtcpMuxPolicy': 'require',
     };
 
     if (forceRelayOnly) {

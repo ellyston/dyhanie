@@ -431,6 +431,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _startP2P(String other) async {
     if (_p2p != null) return;
+
     _p2p = P2PService(
       roomCode: widget.roomCode,
       username: widget.username,
@@ -441,25 +442,28 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _p2pStatusSub = _p2p!.status.listen((s) {
       if (mounted) setState(() => p2pStatusText = s);
 
+      // успех
       if (s == 'p2p_open') {
         if (mounted) {
-          setState(() {
-            p2pConnected = true;
-          
-          });
+          setState(() => p2pConnected = true);
           _updateConnectionMode();
           _saveChatConfig();
         }
-        _flushOutbox(); // ← добавить
+        _flushOutbox();
         return;
       }
 
-      final bad = s.contains('failed') ||
+      // обрыв / 8 с без open → полный reconnect
+      final bad = s == 'need_restart' ||
+          s == 'ice_failed' ||
+          s.contains('failed') ||
           s.contains('Failed') ||
           s.contains('closed') ||
-          s.contains('Closed') ||
-          s == 'ice_failed';
+          s.contains('Closed');
       if (!bad) return;
+
+      // уже открыт — need_restart не трогаем
+      if (s == 'need_restart' && p2pConnected) return;
 
       if (mounted) {
         setState(() {
@@ -471,12 +475,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _updateConnectionMode();
         _saveChatConfig();
       }
+
       _p2pMsgSub?.cancel();
       _p2pStatusSub?.cancel();
-      _p2p?.dispose();
+      final old = _p2p;
       _p2p = null;
+      old?.dispose();
 
-      Future.delayed(const Duration(seconds: 3), () {
+      Future.delayed(const Duration(seconds: 2), () {
         if (!mounted || otherUser == null || _p2p != null) return;
         _startP2P(otherUser!);
       });

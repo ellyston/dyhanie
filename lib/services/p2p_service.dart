@@ -21,6 +21,7 @@ class P2PService {
 
   StreamSubscription? _signalSub;
   Timer? _reofferTimer;
+  Timer? _openTimeout;
 
   bool _isOfferer = false;
   bool _closed = false;
@@ -88,6 +89,9 @@ class P2PService {
 
     _signalSub = DyhanieApi.instance.events.listen(_onSignalEvent);
 
+    // peer видит, что мы в чате
+    await _sendSignal('p2p_hello', {'u': username});
+
     if (_isOfferer) {
       await Future.delayed(const Duration(milliseconds: 800));
       if (_closed || _pc == null) return;
@@ -96,6 +100,9 @@ class P2PService {
     } else {
       _statusController.add('waiting_offer');
     }
+
+    // нет open за 8 с → chat_screen сделает full reconnect
+    _armOpenTimeout();
   }
 
   Future<void> _createAndSendOffer() async {
@@ -132,6 +139,14 @@ class P2PService {
     schedule(0);
   }
 
+  void _armOpenTimeout() {
+    _openTimeout?.cancel();
+    _openTimeout = Timer(const Duration(seconds: 8), () {
+      if (_closed || _opened) return;
+      _statusController.add('need_restart');
+    });
+  }
+
   Future<void> _sendSignal(String kind, dynamic data) async {
     try {
       await DyhanieApi.instance.signal(
@@ -158,6 +173,15 @@ class P2PService {
     if (room != roomCode || from != otherUser) return;
 
     final data = p['data'];
+
+    // второй зашёл в чат → offerer шлёт offer сразу
+    if (kind == 'p2p_hello') {
+      if (_isOfferer && !_opened && !_closed) {
+        _createAndSendOffer();
+      }
+      return;
+    }
+
     if (kind == 'offer' || kind == 'answer') {
       _handleSdp(kind!, data);
     } else if (kind == 'candidate') {
@@ -239,6 +263,8 @@ class P2PService {
     _opened = true;
     _reofferTimer?.cancel();
     _reofferTimer = null;
+    _openTimeout?.cancel();
+    _openTimeout = null;
     _statusController.add('p2p_open');
   }
 
@@ -273,6 +299,8 @@ class P2PService {
     _closed = true;
     _reofferTimer?.cancel();
     _reofferTimer = null;
+    _openTimeout?.cancel();
+    _openTimeout = null;
     await _signalSub?.cancel();
     _signalSub = null;
     try {
