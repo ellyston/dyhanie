@@ -511,12 +511,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final bg = Theme.of(context).scaffoldBackgroundColor;
     final onSurf = Theme.of(context).colorScheme.onSurface;
 
-    return Scaffold(
+   return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        // ... как было
+        backgroundColor: bg,
+        title: Text(
+          L.t('contacts_title'),
+          style: FontService.style(fontSize: 18, color: onSurf),
+        ),
+        iconTheme: IconThemeData(color: onSurf),
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'blacklist_fab',
+        tooltip: L.t('blacklist'),
+        backgroundColor: Colors.redAccent,
+        foregroundColor: Colors.white,
+        elevation: 6,
         onPressed: () async {
           await Navigator.push(
             context,
@@ -524,14 +534,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
               builder: (_) => BlacklistScreen(myUsername: widget.myUsername),
             ),
           );
-          // обновить список после возврата (могли разблокировать)
           if (mounted) await _load();
         },
-        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-        child: Icon(
-          AppIcons.block, // или Icons.block / Icons.person_off
-          color: onSurf.withValues(alpha: 0.85),
-        ),
+        child: const Icon(Icons.block, color: Colors.white, size: 28),
       ),
       body: Column(
         children: [
