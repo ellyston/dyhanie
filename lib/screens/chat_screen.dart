@@ -22,6 +22,7 @@ import '../services/avatar_cache.dart';
 import '../services/icon_style_service.dart';
 import '../services/incoming_call_service.dart';
 import '../services/outbox_service.dart';
+import '../services/contact_invite_service.dart';
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
 
@@ -305,7 +306,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _listenServerMessages() {
     _apiMsgSub?.cancel();
-    _apiMsgSub = DyhanieApi.instance.events.listen((m) {
+    _apiMsgSub = DyhanieApi.instance.events.listen((m) async {
       if (m['type']?.toString() != 'msg.incoming') return;
 
       final p = m['payload'];
@@ -314,20 +315,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final room = p['room']?.toString() ?? '';
       if (room != widget.roomCode) return;
 
-      final from = (payload['from']?.toString() ?? '').toLowerCase();
-      if (from.isNotEmpty && await ContactInviteService().isBlocked(from)) {
-        return; // не показывать сообщение / не принимать call / p2p
-      }
+      final from = (p['from']?.toString() ?? '').toLowerCase().trim();
+      if (from.isEmpty || from == widget.username.toLowerCase()) return;
 
-      final from = p['from']?.toString() ?? '';
-      if (from == widget.username) return;
+      if (await ContactInviteService().isBlocked(from)) return;
 
       final msgId = p['msg_id']?.toString() ?? '';
       if (msgId.isEmpty || _knownServerKeys.contains(msgId)) return;
       _knownServerKeys.add(msgId);
 
       final body = p['body']?.toString() ?? '';
-      // body может быть JSON {text, image, ...} или простой текст
       String text = body;
       String? image;
       String? replyText;
