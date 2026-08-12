@@ -331,6 +331,39 @@ class DyhanieApi {
     }
   }
 
+  Future<List<Map<String, dynamic>>> usernameSearch(
+    String query, {
+    int limit = 20,
+  }) async {
+    final q = query.toLowerCase().trim();
+    if (q.isEmpty) return [];
+
+    final r = await request(
+      'username.search',
+      payload: {
+        'query': q,
+        'limit': limit,
+      },
+    );
+
+    if (r['ok'] != true) {
+      final code = r['error']?['code']?.toString() ?? 'SEARCH_FAIL';
+      throw Exception(code);
+    }
+
+    final payload = r['payload'];
+    if (payload is! Map) return [];
+
+    final list = payload['users'] as List? ?? [];
+    return list
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .where((m) {
+          final u = m['username']?.toString().toLowerCase().trim();
+          return u != null && u.isNotEmpty;
+        })
+        .toList();
+  }
+
   Future<Map<String, dynamic>> chatNudgesList() async {
     final r = await request('chat.nudges_list');
     if (r['ok'] != true) {

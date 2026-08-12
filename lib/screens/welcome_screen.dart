@@ -5,6 +5,7 @@ import '../services/locale_service.dart';
 import 'home_screen.dart';
 import 'pin_setup_screen.dart';
 import 'restore_phrase_screen.dart';
+import 'language_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   /// true = выход с главной: ведёт обратно на Home, не на PIN.
@@ -56,6 +57,27 @@ class WelcomeScreen extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: bg.withValues(alpha: isDark ? 0.72 : 0.82),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: IconButton(
+                tooltip: L.t('language'),
+                icon: Icon(
+                  Icons.language,
+                  color: onSurf.withValues(alpha: 0.55),
+                  size: 26,
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LanguageScreen(),
+                    ),
+                  );
+                },
               ),
             ),
           ),

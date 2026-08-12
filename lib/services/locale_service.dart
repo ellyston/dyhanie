@@ -488,6 +488,12 @@ class LocaleService {
 
         // language screen
         'language_region_ch': 'Швейцария',
+         
+        'blacklist_empty': 'Чёрный список пуст',
+        'unblock_confirm': 'Разблокировать @{name}?',
+        'unblock_confirm_body':
+          'Пользователь снова сможет отправлять вам приглашения и сигналы.',
+        'unblocked_user': '@{name} разблокирован',
     },
 
     // ═══════════════════════════════════════
@@ -903,6 +909,13 @@ class LocaleService {
             '• Chat content prefers P2P when possible.',
 
         'language_region_ch': 'Switzerland',
+              
+        'blacklist_empty': 'Block list is empty',
+        'unblock_confirm': 'Unblock @{name}?',
+        'unblock_confirm_body':
+          'This user will be able to send you invites and signals again.',
+        'unblocked_user': '@{name} unblocked',
+
     },
 
     // ═══════════════════════════════════════
@@ -1319,6 +1332,12 @@ class LocaleService {
         '• Chat-Inhalte bevorzugen P2P, wenn möglich.',
 
     'language_region_ch': 'Schweiz',
+
+    'blacklist_empty': 'Block list is empty',
+    'unblock_confirm': 'Unblock @{name}?',
+    'unblock_confirm_body':
+    'This user will be able to send you invites and signals again.',
+    'unblocked_user': '@{name} unblocked',
     },
   };
 }

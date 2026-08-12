@@ -310,8 +310,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       final p = m['payload'];
       if (p is! Map) return;
+
       final room = p['room']?.toString() ?? '';
       if (room != widget.roomCode) return;
+
+      final from = (payload['from']?.toString() ?? '').toLowerCase();
+      if (from.isNotEmpty && await ContactInviteService().isBlocked(from)) {
+        return; // не показывать сообщение / не принимать call / p2p
+      }
 
       final from = p['from']?.toString() ?? '';
       if (from == widget.username) return;

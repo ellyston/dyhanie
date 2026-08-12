@@ -127,9 +127,28 @@ class ContactInviteService {
   }
 
   /// Список с сервера: incoming / outgoing / badge
-  Future<Map<String, dynamic>> fetchInvites() async {
+    Future<Map<String, dynamic>> fetchInvites() async {
     try {
-      return await DyhanieApi.instance.contactInvitesList();
+      final raw = await DyhanieApi.instance.contactInvitesList();
+      final blocked = await getBlocked();
+
+      final incoming = (raw['incoming'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((e) {
+            final from = (e['from']?.toString() ?? '').toLowerCase();
+            return from.isNotEmpty && !blocked.contains(from);
+          })
+          .toList();
+
+      final outgoing = (raw['outgoing'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      return {
+        'incoming': incoming,
+        'outgoing': outgoing,
+        'badge': incoming.length,
+      };
     } catch (_) {
       return {
         'incoming': <Map<String, dynamic>>[],
@@ -154,6 +173,17 @@ class ContactInviteService {
 
     return DyhanieApi.instance.events.listen((m) async {
       final t = m['type']?.toString();
+      if (t == 'contact.invite_incoming') {
+        final p = m['payload'];
+        if (p is Map) {
+          final from = (p['from']?.toString() ?? '').toLowerCase();
+          if (from.isNotEmpty && await isBlocked(from)) {
+            try {
+              await DyhanieApi.instance.contactDecline(from);
+            } catch (_) {}
+          }
+        }
+      }
       if (t == 'contact.invite_incoming' ||
           t == 'contact.accepted' ||
           t == 'contact.declined') {
@@ -181,6 +211,17 @@ class ContactInviteService {
     });
     return DyhanieApi.instance.events.listen((m) async {
       final t = m['type']?.toString();
+      if (t == 'contact.invite_incoming') {
+        final p = m['payload'];
+        if (p is Map) {
+          final from = (p['from']?.toString() ?? '').toLowerCase();
+          if (from.isNotEmpty && await isBlocked(from)) {
+            try {
+              await DyhanieApi.instance.contactDecline(from);
+            } catch (_) {}
+          }
+        }
+      }
       if (t == 'contact.invite_incoming' ||
           t == 'contact.accepted' ||
           t == 'contact.declined') {

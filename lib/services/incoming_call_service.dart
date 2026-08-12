@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../screens/call_screen.dart';
 import 'dyhanie_api.dart';
+import 'contact_invite_service.dart';
 
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -45,7 +46,7 @@ class IncomingCallService {
     chatHandlingRoom = room;
   }
 
-  void _onEvent(Map<String, dynamic> m) {
+  Future<void> _onEvent(Map<String, dynamic> m) async {
     if (m['type']?.toString() != 'signal') return;
     final p = m['payload'];
     if (p is! Map) return;
@@ -58,6 +59,9 @@ class IncomingCallService {
 
     final from = p['from']?.toString() ?? '';
     if (from.isEmpty || from == me) return;
+
+     // Чёрный список — звонок не открываем
+    if (await ContactInviteService().isBlocked(from)) return;
 
     final room = p['room']?.toString() ?? '';
     if (room.isEmpty) return;

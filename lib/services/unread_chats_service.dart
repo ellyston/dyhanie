@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'dyhanie_api.dart';
+import 'contact_invite_service.dart';
 
 /// Непрочитанные server-msg по dialogId (room).
 class UnreadChatsService {
@@ -52,6 +53,13 @@ class UnreadChatsService {
 
       final p = m['payload'];
       if (p is! Map) return;
+
+      final from = (p['from']?.toString() ?? '').toLowerCase().trim();
+      if (from.isNotEmpty) {
+        final blocked = await ContactInviteService().isBlocked(from);
+        if (blocked) return; // игнор: ни бейджа, ни «сигнала»
+      }
+
       final room = p['room']?.toString() ?? '';
       if (room.isEmpty) return;
       if (openRoomCode != null && openRoomCode == room) return;

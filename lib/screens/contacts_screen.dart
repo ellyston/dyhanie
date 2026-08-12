@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,8 +13,10 @@ import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 import '../services/outbox_service.dart';
 import '../services/avatar_cache.dart';
+import '../services/user_search_service.dart';
 import 'chat_screen.dart';
 import 'chats_screen.dart';
+import 'blacklist_screen.dart';
 
 class ContactsScreen extends StatefulWidget {
   final String myUsername;
@@ -37,6 +38,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   final _invites = ContactInviteService();
   final _signals = DialogSignalService();
   final Map<String, Uint8List?> contactAvatars = {};
+  late final UserSearchService _userSearch;
 
   List<Map<String, dynamic>> incomingInvites = [];
   List<Map<String, dynamic>> outgoingInvites = [];
@@ -58,6 +60,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
   @override
   void initState() {
     super.initState();
+    _userSearch = UserSearchService(myUsername: widget.myUsername);
+    _userSearch.results.addListener(_onSearchChanged);
+    _userSearch.isLoading.addListener(_onSearchChanged);
+    _userSearch.errorText.addListener(_onSearchChanged);
     _load();
     _localSearch.addListener(_filter);
 
@@ -102,6 +108,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
         setState(() => incomingMessagesCount = count);
       },
     );
+  }
+
+  void _onSearchChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _sendNudge(String other) async {
@@ -203,13 +213,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _globalSearchSubmit() async {
-    final query = _globalSearch.text.trim().toLowerCase();
-    if (query.isEmpty || globalSending) return;
+    await _userSearch.searchNow(_globalSearch.text);
+  }
 
+  Future<void> _inviteFromSearch(String username) async {
+    if (globalSending) return;
     setState(() => globalSending = true);
     final result = await _invites.sendInvite(
       fromUsername: widget.myUsername,
-      toUsername: query,
+      toUsername: username,
     );
     if (!mounted) return;
     setState(() => globalSending = false);
@@ -218,12 +230,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
       SnackBar(
         content: Text(
           result == 'ok'
-              ? L.tParams('invite_sent_to', {'name': query})
+              ? L.tParams('invite_sent_to', {'name': username})
               : result,
         ),
       ),
     );
-    if (result == 'ok') _globalSearch.clear();
+    if (result == 'ok') {
+      await _userSearch.searchNow(_globalSearch.text);
+    }
   }
 
   Future<void> _accept(String from) async {
@@ -487,6 +501,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _outgoingSub?.cancel();
     _acceptedSub?.cancel();
     _msgSignalSub?.cancel();
+    _userSearch.dispose();
+    _acceptedSub?.cancel();
     super.dispose();
   }
 
@@ -498,12 +514,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: bg,
-        title: Text(
-          L.t('contacts_title'),
-          style: FontService.style(fontSize: 18, color: onSurf),
+        // ... как было
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BlacklistScreen(myUsername: widget.myUsername),
+            ),
+          );
+          // обновить список после возврата (могли разблокировать)
+          if (mounted) await _load();
+        },
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+        child: Icon(
+          AppIcons.block, // или Icons.block / Icons.person_off
+          color: onSurf.withValues(alpha: 0.85),
         ),
-        iconTheme: IconThemeData(color: onSurf),
       ),
       body: Column(
         children: [
@@ -612,9 +640,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
               decoration: InputDecoration(
                 hintText: L.t('global_search'),
                 hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
-                prefixIcon: Icon(AppIcons.explore,
-                    color: onSurf.withValues(alpha: 0.4)),
-                suffixIcon: globalSending
+                prefixIcon: Icon(
+                  AppIcons.explore,
+                  color: onSurf.withValues(alpha: 0.4),
+                ),
+                suffixIcon: _userSearch.isLoading.value
                     ? const Padding(
                         padding: EdgeInsets.all(12),
                         child: SizedBox(
@@ -623,11 +653,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       )
-                    : IconButton(
-                        icon: Icon(AppIcons.send,
-                            color: onSurf.withValues(alpha: 0.75)),
-                        onPressed: _globalSearchSubmit,
-                      ),
+                    : (_globalSearch.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.close,
+                              color: onSurf.withValues(alpha: 0.55),
+                            ),
+                            onPressed: () {
+                              _globalSearch.clear();
+                              _userSearch.clear();
+                              setState(() {});
+                            },
+                          )
+                        : null),
                 filled: true,
                 fillColor: onSurf.withValues(alpha: 0.06),
                 border: OutlineInputBorder(
@@ -635,6 +673,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   borderSide: BorderSide.none,
                 ),
               ),
+              onChanged: (v) {
+                _userSearch.onQueryChanged(v);
+                setState(() {});
+              },
               onSubmitted: (_) => _globalSearchSubmit(),
             ),
           ),
@@ -739,37 +781,100 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     },
                   ),
           ),
-          if (blocked.isNotEmpty)
-            ExpansionTile(
-              title: Text(
-                '${L.t('blacklist')} (${blocked.length})',
+          if (_userSearch.errorText.value != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text(
+                _userSearch.errorText.value!,
+                style: FontService.style(color: Colors.redAccent, fontSize: 13),
+              ),
+            ),
+
+          if (_userSearch.results.value.isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: _userSearch.results.value.length,
+                itemBuilder: (ctx, i) {
+                  final hit = _userSearch.results.value[i];
+                  final initial =
+                      hit.username.isNotEmpty ? hit.username[0].toUpperCase() : '?';
+
+                  Widget trailing;
+                  if (hit.isSelf) {
+                    trailing = Text(
+                      L.t('invite_self'),
+                      style: FontService.style(
+                        color: onSurf.withValues(alpha: 0.45),
+                        fontSize: 12,
+                      ),
+                    );
+                  } else if (hit.isBlocked) {
+                    trailing = Text(
+                      L.t('blocked_user'),
+                      style: FontService.style(
+                        color: Colors.redAccent.withValues(alpha: 0.8),
+                        fontSize: 12,
+                      ),
+                    );
+                  } else if (hit.isContact) {
+                    trailing = Text(
+                      L.t('already_contact'),
+                      style: FontService.style(
+                        color: onSurf.withValues(alpha: 0.45),
+                        fontSize: 12,
+                      ),
+                    );
+                  } else {
+                    trailing = TextButton(
+                      onPressed:
+                          globalSending ? null : () => _inviteFromSearch(hit.username),
+                      child: Text(
+                        L.t('send_invite'),
+                        style: FontService.style(fontSize: 13),
+                      ),
+                    );
+                  }
+
+                  return ListTile(
+                    dense: true,
+                    leading: CircleAvatar(
+                      radius: 18,
+                      backgroundImage: hit.avatarBytes != null
+                          ? MemoryImage(hit.avatarBytes!)
+                          : null,
+                      child: hit.avatarBytes == null
+                          ? Text(initial, style: FontService.style(fontSize: 14))
+                          : null,
+                    ),
+                    title: Text(
+                      '@${hit.username}',
+                      style: FontService.style(color: onSurf),
+                    ),
+                    trailing: trailing,
+                    onTap: hit.isSelf || hit.isBlocked || hit.isContact
+                        ? null
+                        : () => _inviteFromSearch(hit.username),
+                  );
+                },
+              ),
+            ),
+
+          if (_globalSearch.text.trim().length >= UserSearchService.minQueryLength &&
+              !_userSearch.isLoading.value &&
+              _userSearch.results.value.isEmpty &&
+              _userSearch.errorText.value == null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                L.t('user_not_found'),
                 style: FontService.style(
-                  color: onSurf.withValues(alpha: 0.55),
+                  color: onSurf.withValues(alpha: 0.45),
+                  fontSize: 13,
                 ),
               ),
-              collapsedIconColor: onSurf.withValues(alpha: 0.55),
-              iconColor: onSurf.withValues(alpha: 0.75),
-              children: blocked
-                  .map(
-                    (b) => ListTile(
-                      title: Text(
-                        '@$b',
-                        style: FontService.style(
-                          color: onSurf.withValues(alpha: 0.75),
-                        ),
-                      ),
-                      trailing: TextButton(
-                        onPressed: () => _unblock(b),
-                        child: Text(
-                          L.t('unblock_short'),
-                          style: FontService.style(
-                            color: onSurf.withValues(alpha: 0.55),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
             ),
         ],
       ),
