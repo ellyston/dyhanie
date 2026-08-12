@@ -81,6 +81,38 @@ class _ChatAppBarState extends State<ChatAppBar>
     super.dispose();
   }
 
+  String _statusLine() {
+    if (widget.otherUser == null) {
+      return widget.isDirect
+          ? L.t('waiting_peer')
+          : '${L.t('room_code')}: ${widget.roomCode}';
+    }
+    final online = widget.otherOnline ? L.t('online') : L.t('offline');
+    final mode = widget.connectionMode;
+    // Режим сервера коротко
+    final relay = switch (widget.serverRelayMode) {
+      ServerRelayMode.open => L.t('via_server'),
+      ServerRelayMode.soft => L.t('server_relay_soft'),
+      ServerRelayMode.hard => L.t('server_relay_hard'),
+    };
+    // Не дублируем, если connectionMode уже содержит то же
+    if (mode.isEmpty) return '$online · $relay';
+    return '$online · $mode';
+  }
+
+  Color _statusColor(Color onSurf) {
+    if (widget.otherOnline) {
+      return Colors.greenAccent.withValues(alpha: 0.9);
+    }
+    if (widget.serverRelayMode == ServerRelayMode.hard) {
+      return Colors.redAccent.withValues(alpha: 0.9);
+    }
+    if (widget.serverRelayMode == ServerRelayMode.soft) {
+      return Colors.orangeAccent.withValues(alpha: 0.9);
+    }
+    return onSurf.withValues(alpha: 0.7);
+  }
+
   Widget _avatar(Uint8List? bytes, String? name, {bool highlight = false}) {
     final onSurf = Theme.of(context).colorScheme.onSurface;
     final letter =
@@ -190,8 +222,29 @@ class _ChatAppBarState extends State<ChatAppBar>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  widget.isDirect ? L.t('dialog') : L.t('app_name'),
-                  style: FontService.style(fontSize: 15, color: onSurf),
+                  widget.isDirect
+                      ? (widget.otherUser != null
+                          ? '@${widget.otherUser}'
+                          : L.t('dialog'))
+                      : L.t('app_name'),
+                  style: FontService.style(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: onSurf,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _statusLine(),
+                  style: FontService.style(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: _statusColor(onSurf),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   widget.otherUser != null
@@ -210,26 +263,12 @@ class _ChatAppBarState extends State<ChatAppBar>
             ),
       centerTitle: true,
       actions: [
-        IconButton(
-          icon: Icon(
-            widget.showSearch ? Icons.close : AppIcons.search,
-            color: onSurf.withValues(alpha: 0.75),
+        if (widget.otherUser != null)
+          IconButton(
+            tooltip: L.t('call'),
+            icon: Icon(AppIcons.call, color: onSurf.withValues(alpha: 0.85)),
+            onPressed: widget.onCall,
           ),
-          onPressed: widget.onToggleSearch,
-        ),
-        IconButton(
-          tooltip: switch (widget.serverRelayMode) {
-            ServerRelayMode.open => L.t('server_relay_open'),
-            ServerRelayMode.soft => L.t('server_relay_soft'),
-            ServerRelayMode.hard => L.t('server_relay_hard'),
-          },
-          icon: _serverRelayIcon(onSurf),
-          onPressed: widget.onToggleServerBlock,
-        ),
-        IconButton(
-          icon: Icon(AppIcons.call, color: onSurf.withValues(alpha: 0.75)),
-          onPressed: widget.onCall,
-        ),
         IconButton(
           tooltip:
               widget.wipeOnExit ? L.t('wipe_on_exit') : L.t('keep_on_exit'),
@@ -239,9 +278,78 @@ class _ChatAppBarState extends State<ChatAppBar>
           ),
           onPressed: widget.onToggleWipe,
         ),
-        IconButton(
-          icon: Icon(AppIcons.tune, color: onSurf.withValues(alpha: 0.75)),
-          onPressed: widget.onSettings,
+        PopupMenuButton<String>(
+          tooltip: L.t('settings'),
+          icon: Icon(Icons.more_vert, color: onSurf.withValues(alpha: 0.9)),
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          onSelected: (value) {
+            switch (value) {
+              case 'search':
+                widget.onToggleSearch();
+                break;
+              case 'server':
+                widget.onToggleServerBlock();
+                break;
+              case 'settings':
+                widget.onSettings();
+                break;
+            }
+          },
+          itemBuilder: (ctx) {
+            final on = Theme.of(ctx).colorScheme.onSurface;
+            return [
+              PopupMenuItem(
+                value: 'search',
+                child: Row(
+                  children: [
+                    Icon(
+                      widget.showSearch ? Icons.close : Icons.search,
+                      color: on.withValues(alpha: 0.85),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      widget.showSearch ? L.t('close') : L.t('search_messages'),
+                      style: FontService.style(color: on),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'server',
+                child: Row(
+                  children: [
+                    _serverRelayIcon(on),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        switch (widget.serverRelayMode) {
+                          ServerRelayMode.open => L.t('server_relay_open'),
+                          ServerRelayMode.soft => L.t('server_relay_soft'),
+                          ServerRelayMode.hard => L.t('server_relay_hard'),
+                        },
+                        style: FontService.style(color: on),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'settings',
+                child: Row(
+                  children: [
+                    Icon(AppIcons.tune,
+                        color: on.withValues(alpha: 0.85), size: 22),
+                    const SizedBox(width: 12),
+                    Text(
+                      L.t('settings'),
+                      style: FontService.style(color: on),
+                    ),
+                  ],
+                ),
+              ),
+            ];
+          },
         ),
       ],
     );

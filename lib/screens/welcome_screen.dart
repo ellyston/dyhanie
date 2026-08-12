@@ -63,21 +63,24 @@ class WelcomeScreen extends StatelessWidget {
           SafeArea(
             child: Align(
               alignment: Alignment.topLeft,
-              child: IconButton(
-                tooltip: L.t('language'),
-                icon: Icon(
-                  Icons.language,
-                  color: onSurf.withValues(alpha: 0.55),
-                  size: 26,
+              child: Material(
+                color: Colors.transparent,
+                child: IconButton(
+                  tooltip: L.t('language'),
+                  icon: Icon(
+                    Icons.language,
+                    color: onSurf,
+                    size: 30,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LanguageScreen(),
+                      ),
+                    );
+                  },
                 ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const LanguageScreen(),
-                    ),
-                  );
-                },
               ),
             ),
           ),
