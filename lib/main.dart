@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/splash_screen.dart';
@@ -10,6 +11,7 @@ import 'services/locale_service.dart';
 import 'services/theme_controller.dart';
 import 'services/theme_service.dart';
 import 'services/webrtc_ice.dart';
+import 'services/shorebird_update_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,11 +22,28 @@ void main() async {
   await ThemeController.instance.init();
   await WebRtcIce.load();
 
-  runApp(const MyApp());
+  // Принудительная проверка Shorebird-патча до UI.
+  // true = патч скачан, нужен полный перезапуск приложения.
+  var shorebirdRestartNeeded = false;
+  if (!kIsWeb) {
+    try {
+      shorebirdRestartNeeded =
+          await ShorebirdUpdateService.instance.checkAndDownload(force: true);
+    } catch (e) {
+      debugPrint('[shorebird] startup check failed: $e');
+    }
+  }
+
+  runApp(MyApp(shorebirdRestartNeeded: shorebirdRestartNeeded));
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  final bool shorebirdRestartNeeded;
+
+  const MyApp({
+    super.key,
+    this.shorebirdRestartNeeded = false,
+  });
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -35,6 +54,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    if (widget.shorebirdRestartNeeded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showRestartDialog();
+      });
+    }
+  }
+
+  void _showRestartDialog() {
+    final nav = appNavigatorKey.currentState;
+    if (nav == null) {
+      // Splash ещё не смонтирован — повторим чуть позже
+      Future.delayed(const Duration(milliseconds: 600), _showRestartDialog);
+      return;
+    }
+    final ctx = nav.context;
+    showDialog<void>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        final onSurf = Theme.of(dialogCtx).colorScheme.onSurface;
+        return AlertDialog(
+          title: Text(
+            L.t('app_name'),
+            style: FontService.style(color: onSurf),
+          ),
+          content: Text(
+            'Установлено обновление. Полностью закройте приложение и откройте снова.',
+            style: FontService.style(color: onSurf),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(
+                'OK',
+                style: FontService.style(color: onSurf),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -44,10 +105,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   /// После возврата в приложение — пересчитать auto-тему по часу
+  /// и ещё раз проверить патч (второй телефон / долгий фон).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ThemeController.instance.refreshAuto();
+      if (!kIsWeb) {
+        ShorebirdUpdateService.instance.checkAndDownload(force: true).then((need) {
+          if (need && mounted) {
+            _showRestartDialog();
+          }
+        });
+      }
     }
   }
 
