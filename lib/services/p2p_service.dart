@@ -5,10 +5,21 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'dyhanie_api.dart';
 import 'webrtc_ice.dart';
 
+/// WebRTC DataChannel P2P для 1:1 чата.
+///
+/// Правки относительно старой версии:
+/// - usernames всегда в lowercase при сравнении signal
+/// - «открыт» только когда DataChannel реально Open (не только ICE)
+/// - аккуратнее re-offer (не спамим, если remote уже set / идёт answer)
+/// - polite/impolite glare: младший username = offerer (impolite), старший = polite
+/// - backoff reconnect-сигнала need_restart без лишних offer-раундов
 class P2PService {
   final String roomCode;
   final String username;
   final String otherUser;
+
+  late final String _me;
+  late final String _peer;
 
   RTCPeerConnection? _pc;
   RTCDataChannel? _channel;
@@ -23,33 +34,47 @@ class P2PService {
   Timer? _reofferTimer;
   Timer? _openTimeout;
 
+  /// Младший username по compareTo — offerer (impolite).
   bool _isOfferer = false;
+
   bool _closed = false;
   bool _remoteSet = false;
   bool _opened = false;
   bool _offerHandled = false;
+  bool _makingOffer = false;
   int _offerRound = 0;
 
   final List<RTCIceCandidate> _pendingCandidates = [];
 
   static const _reofferDelays = <Duration>[
-    Duration(milliseconds: 2500),
-    Duration(seconds: 5),
+    Duration(seconds: 3),
+    Duration(seconds: 7),
   ];
+
+  static const _openTimeoutDuration = Duration(seconds: 12);
 
   P2PService({
     required this.roomCode,
     required this.username,
     required this.otherUser,
-  });
+  }) {
+    _me = username.toLowerCase().trim();
+    _peer = otherUser.toLowerCase().trim();
+  }
 
   Future<void> connect() async {
-    _isOfferer = username.compareTo(otherUser) < 0;
+    if (_me.isEmpty || _peer.isEmpty || _me == _peer) {
+      _statusController.add('invalid_users');
+      return;
+    }
+
+    _isOfferer = _me.compareTo(_peer) < 0;
     _statusController.add('connecting');
 
     await WebRtcIce.load();
     _pc = await createPeerConnection(WebRtcIce.config);
 
+    // Negotiated DC: оба создают канал с одним id — без onDataChannel.
     _channel = await _pc!.createDataChannel(
       'chat',
       RTCDataChannelInit()
@@ -70,30 +95,40 @@ class P2PService {
     };
 
     _pc!.onConnectionState = (state) {
+      if (_closed) return;
       _statusController.add('pc:$state');
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        _markOpen();
+      // Не считаем P2P открытым только по PC connected — ждём DC.
+      if (state ==
+              RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          state ==
+              RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        if (!_opened) {
+          _statusController.add('pc_failed');
+        }
       }
     };
 
     _pc!.onIceConnectionState = (state) {
+      if (_closed) return;
       _statusController.add('ice:$state');
-      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
-          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
-        _markOpen();
-      }
       if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
         _statusController.add('ice_failed');
+      }
+      // ICE connected/completed — только статус, open только через DC.
+      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        _statusController.add('ice_ok');
+        _tryMarkOpenFromDc();
       }
     };
 
     _signalSub = DyhanieApi.instance.events.listen(_onSignalEvent);
 
     // peer видит, что мы в чате
-    await _sendSignal('p2p_hello', {'u': username});
+    await _sendSignal('p2p_hello', {'u': _me});
 
     if (_isOfferer) {
-      await Future.delayed(const Duration(milliseconds: 800));
+      await Future.delayed(const Duration(milliseconds: 600));
       if (_closed || _pc == null) return;
       await _createAndSendOffer();
       _armReoffers();
@@ -101,14 +136,19 @@ class P2PService {
       _statusController.add('waiting_offer');
     }
 
-    // нет open за 8 с → chat_screen сделает full reconnect
     _armOpenTimeout();
   }
 
   Future<void> _createAndSendOffer() async {
     if (_closed || _pc == null || _opened) return;
+    // Уже есть remote answer / offer обработан — не долбим лишними offer
+    if (_remoteSet && !_isOfferer) return;
+    if (_makingOffer) return;
+
+    _makingOffer = true;
     try {
       final offer = await _pc!.createOffer();
+      if (_closed || _pc == null || _opened) return;
       await _pc!.setLocalDescription(offer);
       await _sendSignal('offer', {
         'type': offer.type,
@@ -120,6 +160,8 @@ class P2PService {
       );
     } catch (e) {
       _statusController.add('offer_error:$e');
+    } finally {
+      _makingOffer = false;
     }
   }
 
@@ -131,6 +173,8 @@ class P2PService {
       if (index >= _reofferDelays.length) return;
       _reofferTimer = Timer(_reofferDelays[index], () async {
         if (_closed || _opened) return;
+        // Если remote уже set — re-offer обычно вреден
+        if (_remoteSet) return;
         await _createAndSendOffer();
         schedule(index + 1);
       });
@@ -141,7 +185,7 @@ class P2PService {
 
   void _armOpenTimeout() {
     _openTimeout?.cancel();
-    _openTimeout = Timer(const Duration(seconds: 8), () {
+    _openTimeout = Timer(_openTimeoutDuration, () {
       if (_closed || _opened) return;
       _statusController.add('need_restart');
     });
@@ -151,7 +195,7 @@ class P2PService {
     try {
       await DyhanieApi.instance.signal(
         room: roomCode,
-        to: otherUser,
+        to: _peer,
         kind: kind,
         data: data,
       );
@@ -167,23 +211,25 @@ class P2PService {
     final p = msg['payload'];
     if (p is! Map) return;
 
-    final room = p['room']?.toString();
-    final from = p['from']?.toString();
-    final kind = p['kind']?.toString();
-    if (room != roomCode || from != otherUser) return;
+    final room = p['room']?.toString() ?? '';
+    final from = (p['from']?.toString() ?? '').toLowerCase().trim();
+    final kind = p['kind']?.toString() ?? '';
+
+    if (room != roomCode) return;
+    if (from != _peer) return;
 
     final data = p['data'];
 
-    // второй зашёл в чат → offerer шлёт offer сразу
+    // Второй зашёл в чат → offerer шлёт offer, если ещё не открыто
     if (kind == 'p2p_hello') {
-      if (_isOfferer && !_opened && !_closed) {
+      if (_isOfferer && !_opened && !_closed && !_remoteSet) {
         _createAndSendOffer();
       }
       return;
     }
 
     if (kind == 'offer' || kind == 'answer') {
-      _handleSdp(kind!, data);
+      _handleSdp(kind, data);
     } else if (kind == 'candidate') {
       _handleCandidate(data);
     }
@@ -193,23 +239,59 @@ class P2PService {
     if (_pc == null || data is! Map) return;
     if (_opened) return;
 
-    if (kind == 'offer' && _offerHandled && _remoteSet) {
-      _offerHandled = false;
-      _remoteSet = false;
+    final type = data['type']?.toString() ?? kind;
+    final sdp = data['sdp']?.toString();
+    if (sdp == null || sdp.isEmpty) return;
+
+    // --- Perfect Negotiation (упрощённо) ---
+    // Offerer = impolite: при своём makingOffer игнорирует входящий offer.
+    // Answerer = polite: принимает offer, при конфликте откатывается.
+    if (kind == 'offer') {
+      final readyForOffer =
+          !_makingOffer && _pc!.signalingState !=
+              RTCSignalingState.RTCSignalingStateHaveLocalOffer;
+
+      if (_isOfferer) {
+        // impolite: свой offer важнее
+        if (_makingOffer ||
+            _pc!.signalingState ==
+                RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+          _statusController.add('glare_ignore_offer');
+          return;
+        }
+      } else {
+        // polite: если сами как-то в have-local-offer — rollback не везде
+        // поддерживается в flutter_webrtc; просто примем новый offer.
+        if (!readyForOffer && _offerHandled && _remoteSet) {
+          // повторный offer от peer после сброса
+          _offerHandled = false;
+          _remoteSet = false;
+        }
+      }
+
+      if (_offerHandled && _remoteSet && kind == 'offer') {
+        // Повторный offer до open — разрешаем один раз переустановить
+        _offerHandled = false;
+        _remoteSet = false;
+        _statusController.add('offer_replace');
+      }
+
+      if (_offerHandled) return;
     }
-    if (kind == 'offer' && _offerHandled) return;
+
+    if (kind == 'answer' && !_isOfferer) {
+      // Answerer не должен получать answer
+      return;
+    }
 
     try {
-      final type = data['type']?.toString() ?? kind;
-      final sdp = data['sdp']?.toString();
-      if (sdp == null || sdp.isEmpty) return;
-
       await _pc!.setRemoteDescription(RTCSessionDescription(sdp, type));
       _remoteSet = true;
       if (kind == 'offer') _offerHandled = true;
       _statusController.add('remote_set');
 
-      for (final c in _pendingCandidates) {
+      // Отложенные ICE
+      for (final c in List<RTCIceCandidate>.from(_pendingCandidates)) {
         try {
           await _pc!.addCandidate(c);
         } catch (_) {}
@@ -218,6 +300,7 @@ class P2PService {
 
       if (!_isOfferer && kind == 'offer') {
         final answer = await _pc!.createAnswer();
+        if (_closed || _pc == null) return;
         await _pc!.setLocalDescription(answer);
         await _sendSignal('answer', {
           'type': answer.type,
@@ -225,8 +308,10 @@ class P2PService {
         });
         _statusController.add('answer_sent');
       }
+
+      _tryMarkOpenFromDc();
     } catch (e) {
-      _statusController.add('sdp_error: $e');
+      _statusController.add('sdp_error:$e');
     }
   }
 
@@ -254,18 +339,8 @@ class P2PService {
       await _pc!.addCandidate(candidate);
       _statusController.add('cand_added');
     } catch (e) {
-      _statusController.add('cand_error: $e');
+      _statusController.add('cand_error:$e');
     }
-  }
-
-  void _markOpen() {
-    if (_opened || _closed) return;
-    _opened = true;
-    _reofferTimer?.cancel();
-    _reofferTimer = null;
-    _openTimeout?.cancel();
-    _openTimeout = null;
-    _statusController.add('p2p_open');
   }
 
   void _setupChannel(RTCDataChannel channel) {
@@ -280,36 +355,77 @@ class P2PService {
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
         _markOpen();
       }
+      if (state == RTCDataChannelState.RTCDataChannelClosed ||
+          state == RTCDataChannelState.RTCDataChannelClosing) {
+        if (_opened) {
+          _statusController.add('dc_closed');
+        }
+      }
     };
   }
 
-  void send(String text) {
-    if (_channel != null &&
-        _channel!.state == RTCDataChannelState.RTCDataChannelOpen) {
-      _channel!.send(RTCDataChannelMessage(text));
+  /// Open только если DC реально open.
+  void _tryMarkOpenFromDc() {
+    if (_closed || _opened) return;
+    final ch = _channel;
+    if (ch != null && ch.state == RTCDataChannelState.RTCDataChannelOpen) {
+      _markOpen();
     }
   }
 
+  void _markOpen() {
+    if (_opened || _closed) return;
+    final ch = _channel;
+    if (ch == null || ch.state != RTCDataChannelState.RTCDataChannelOpen) {
+      return;
+    }
+    _opened = true;
+    _reofferTimer?.cancel();
+    _reofferTimer = null;
+    _openTimeout?.cancel();
+    _openTimeout = null;
+    _statusController.add('p2p_open');
+  }
+
+  void send(String text) {
+    if (!isOpen) return;
+    try {
+      _channel!.send(RTCDataChannelMessage(text));
+    } catch (e) {
+      _statusController.add('send_err:$e');
+    }
+  }
+
+  /// Реально готов слать сообщения.
   bool get isOpen =>
+      !_closed &&
       _opened &&
       _channel != null &&
       _channel!.state == RTCDataChannelState.RTCDataChannelOpen;
 
   Future<void> dispose() async {
     _closed = true;
+    _opened = false;
     _reofferTimer?.cancel();
     _reofferTimer = null;
     _openTimeout?.cancel();
     _openTimeout = null;
     await _signalSub?.cancel();
     _signalSub = null;
+    _pendingCandidates.clear();
     try {
       await _channel?.close();
     } catch (_) {}
+    _channel = null;
     try {
       await _pc?.close();
     } catch (_) {}
-    await _messageController.close();
-    await _statusController.close();
+    _pc = null;
+    if (!_messageController.isClosed) {
+      await _messageController.close();
+    }
+    if (!_statusController.isClosed) {
+      await _statusController.close();
+    }
   }
 }

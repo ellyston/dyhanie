@@ -90,6 +90,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await DyhanieApi.instance.connect();
       await DyhanieApi.instance.sessionBind(username);
       await DyhanieApi.instance.avatarSet(b64);
+      await AvatarCache.saveBytes(myUsername, bytes, updatedAt: DateTime.now().millisecondsSinceEpoch);
       await AvatarCache.saveBytes(username, bytes,
         updatedAt: DateTime.now().millisecondsSinceEpoch);
     } catch (_) {}

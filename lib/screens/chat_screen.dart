@@ -123,11 +123,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         mine = base64Decode(clean);
       } catch (_) {}
     }
-    Uint8List? otherBytes;
-    final other = otherUser ?? _otherFromRoomCode();
-    if (other != null && other.isNotEmpty) {
-      otherBytes = await AvatarCache.fetch(other);
-    }
+    otherBytes = await AvatarCache.fetch(
+      other,
+      bindUsername: widget.username,
+    );
 
     if (!mounted) return;
     setState(() {
