@@ -80,7 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Локально + кэш + сервер.
-  Future<void> _persistAvatar(Uint8List bytes, String username) async {
+    Future<void> _persistAvatar(Uint8List bytes, String username) async {
     final b64 = base64Encode(bytes);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(avatarKey, b64);
@@ -90,9 +90,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await DyhanieApi.instance.connect();
       await DyhanieApi.instance.sessionBind(username);
       await DyhanieApi.instance.avatarSet(b64);
-      await AvatarCache.saveBytes(myUsername, bytes, updatedAt: DateTime.now().millisecondsSinceEpoch);
-      await AvatarCache.saveBytes(username, bytes,
-        updatedAt: DateTime.now().millisecondsSinceEpoch);
+      await AvatarCache.saveBytes(
+        username,
+        bytes,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (_) {}
   }
 

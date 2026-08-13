@@ -113,7 +113,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return otherUser;
   }
 
-  Future<void> _loadAvatars() async {
+    Future<void> _loadAvatars() async {
     final prefs = await SharedPreferences.getInstance();
     Uint8List? mine;
     final myRaw = prefs.getString('avatar');
@@ -123,10 +123,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         mine = base64Decode(clean);
       } catch (_) {}
     }
-    otherBytes = await AvatarCache.fetch(
-      other,
-      bindUsername: widget.username,
-    );
+
+    Uint8List? otherBytes;
+    final other = otherUser ?? _otherFromRoomCode();
+    if (other != null && other.isNotEmpty) {
+      otherBytes = await AvatarCache.fetch(
+        other,
+        bindUsername: widget.username,
+      );
+    }
 
     if (!mounted) return;
     setState(() {
