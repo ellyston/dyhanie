@@ -158,11 +158,17 @@ class _ChatsScreenState extends State<ChatsScreen> {
     });
   }
 
-  Future<void> _bootstrap() async {
+    Future<void> _bootstrap() async {
     await UnreadChatsService.instance.load();
     await _loadMeta();
     await _loadSaved();
     await _loadLocalPending();
+    // ещё раз пройтись по всем
+    for (final e in items.entries) {
+      if (e.value.otherUser.isNotEmpty) {
+        _ensureAvatar(e.value.otherUser, e.key);
+      }
+    }
   }
 
   Future<void> _loadMeta() async {
@@ -427,13 +433,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   Future<void> _ensureAvatar(String other, String dialogId) async {
     if (other.isEmpty) return;
-    final bytes = await AvatarCache.fetch(other);
+    final bytes = await AvatarCache.fetch(
+      other,
+      bindUsername: widget.myUsername,
+    );
     if (!mounted || bytes == null) return;
     final prev = items[dialogId];
     if (prev == null) return;
-    if (prev.avatarBytes != null && prev.avatarBytes!.length == bytes.length) {
-      return; // уже есть
-    }
+
     setState(() {
       items[dialogId] = _ChatItem(
         dialogId: prev.dialogId,
@@ -444,7 +451,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         hasOutbox: prev.hasOutbox,
         isSaved: prev.isSaved,
         preview: prev.preview,
-        avatarBytes: bytes,
+        avatarBytes: bytes, // всегда пишем bytes, не prev
       );
     });
   }

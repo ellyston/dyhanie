@@ -12,6 +12,19 @@ class AvatarCache {
   static String _tsKey(String username) =>
       'avatar_ts_${username.toLowerCase().trim()}';
 
+  static Uint8List? _decode(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      var s = raw.trim();
+      if (s.contains(',')) s = s.split(',').last.trim();
+      s = s.replaceAll(RegExp(r'\s+'), '');
+      if (s.isEmpty) return null;
+      return base64Decode(s);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> save(
     String username,
     String base64Data, {
@@ -26,6 +39,8 @@ class AvatarCache {
     await prefs.setString(keyFor(u), clean);
     if (updatedAt != null) {
       await prefs.setInt(_tsKey(u), updatedAt);
+    } else {
+      await prefs.setInt(_tsKey(u), DateTime.now().millisecondsSinceEpoch);
     }
   }
 
@@ -39,66 +54,76 @@ class AvatarCache {
 
   static Future<Uint8List?> load(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(keyFor(username));
-    if (raw == null || raw.isEmpty) return null;
-    try {
-      final clean = raw.contains(',') ? raw.split(',').last : raw;
-      return base64Decode(clean);
-    } catch (_) {
-      return null;
-    }
+    return _decode(prefs.getString(keyFor(username)));
   }
 
-  /// Кэш, при необходимости обновление с сервера.
+  /// 1) отдать кэш  2) обновить с сервера при необходимости
   static Future<Uint8List?> fetch(
     String username, {
     bool forceNetwork = false,
+    String? bindUsername,
   }) async {
     final u = username.toLowerCase().trim();
     if (u.isEmpty) return null;
 
     final prefs = await SharedPreferences.getInstance();
     final localTs = prefs.getInt(_tsKey(u)) ?? 0;
+    final cached = await load(u);
 
-    if (!forceNetwork) {
-      final cached = await load(u);
-      // если кэша нет — ниже сеть; если есть — всё равно сверим ts
-      if (cached == null) {
-        // fall through to network
-      } else {
-        // быстрый путь: сеть только для сверки ts (ниже)
-      }
+    // Быстрый ответ из кэша, если не форсим сеть
+    if (!forceNetwork && cached != null && localTs > 0) {
+      // фоновое обновление (не ждём)
+      _refreshFromNetwork(u, localTs, bindUsername: bindUsername);
+      return cached;
     }
 
+    return await _refreshFromNetwork(
+      u,
+      localTs,
+      bindUsername: bindUsername,
+      fallback: cached,
+    );
+  }
+
+  static Future<Uint8List?> _refreshFromNetwork(
+    String u,
+    int localTs, {
+    String? bindUsername,
+    Uint8List? fallback,
+  }) async {
     try {
-      if (!DyhanieApi.instance.isConnected) {
-        await DyhanieApi.instance.connect();
+      final api = DyhanieApi.instance;
+      if (!api.isConnected) {
+        await api.connect();
+      }
+      // bind не обязателен для avatar.get, но если передали — привяжем
+      final bind = bindUsername?.toLowerCase().trim();
+      if (bind != null &&
+          bind.isNotEmpty &&
+          api.boundUsername != bind) {
+        try {
+          await api.sessionBind(bind);
+        } catch (_) {}
       }
 
-      final r = await DyhanieApi.instance.avatarGetWithMeta(u);
-      if (r == null) {
-        return await load(u);
-      }
+      final r = await api.avatarGetWithMeta(u);
+      if (r == null) return fallback ?? await load(u);
 
-      final b64 = r['data'] as String?;
+      final b64 = r['data']?.toString();
       final remoteTs = r['updated_at'] is int
           ? r['updated_at'] as int
           : int.tryParse('${r['updated_at']}') ?? 0;
 
-      if (b64 == null || b64.isEmpty) return await load(u);
+      if (b64 == null || b64.isEmpty) return fallback ?? await load(u);
 
-      if (forceNetwork || remoteTs > localTs || localTs == 0) {
-        await save(u, b64, updatedAt: remoteTs);
-        return base64Decode(b64.contains(',') ? b64.split(',').last : b64);
+      if (remoteTs >= localTs || localTs == 0) {
+        await save(u, b64, updatedAt: remoteTs > 0 ? remoteTs : null);
+        return _decode(b64) ?? fallback;
       }
 
-      // сервер не новее — отдать кэш
-      final cached = await load(u);
-      if (cached != null) return cached;
-      await save(u, b64, updatedAt: remoteTs);
-      return base64Decode(b64.contains(',') ? b64.split(',').last : b64);
+      return fallback ?? await load(u) ?? _decode(b64);
     } catch (_) {
-      return await load(u);
+      return fallback ?? await load(u);
     }
   }
 

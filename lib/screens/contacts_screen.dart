@@ -158,11 +158,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _loadAvatarsFor(List<String> names) async {
     for (final name in names) {
-      final bytes = await AvatarCache.fetch(name);
+      final bytes = await AvatarCache.fetch(
+        name,
+        bindUsername: widget.myUsername,
+      );
       if (!mounted) return;
-      if (contactAvatars[name] != bytes) {
-        setState(() => contactAvatars[name] = bytes);
-      }
+      setState(() => contactAvatars[name] = bytes);
     }
   }
 
@@ -251,6 +252,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           incomingInvites.where((e) => e['from']?.toString() != from).toList();
     });
     await _load();
+    _loadAvatarsFor([from]);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -520,23 +522,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
           style: FontService.style(fontSize: 18, color: onSurf),
         ),
         iconTheme: IconThemeData(color: onSurf),
-      ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'blacklist_fab',
-        tooltip: L.t('blacklist'),
-        backgroundColor: Colors.redAccent,
-        foregroundColor: Colors.white,
-        elevation: 6,
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => BlacklistScreen(myUsername: widget.myUsername),
-            ),
-          );
-          if (mounted) await _load();
-        },
-        child: const Icon(Icons.block, color: Colors.white, size: 28),
       ),
       body: Column(
         children: [
@@ -881,6 +866,40 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ),
               ),
             ),
+                    // Чёрный список — узкая полоска внизу
+          Material(
+            color: onSurf.withValues(alpha: 0.12),
+            child: InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        BlacklistScreen(myUsername: widget.myUsername),
+                  ),
+                );
+                if (mounted) await _load();
+              },
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 36,
+                  width: double.infinity,
+                  child: Center(
+                    child: Text(
+                      L.t('blacklist'),
+                      style: FontService.style(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.6,
+                        color: onSurf.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),  
         ],
       ),
     );
