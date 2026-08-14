@@ -120,7 +120,11 @@ class DyhanieApi {
     final clean = base64Data.contains(',')
         ? base64Data.split(',').last.trim()
         : base64Data.trim();
-    final r = await request('avatar.set', payload: {'data': clean});
+    final r = await request(
+      'avatar.set',
+      payload: {'data': clean},
+      timeout: const Duration(seconds: 60),
+    );
     if (r['ok'] != true) {
       throw Exception(r['error']?['code'] ?? 'AVATAR_SET_FAIL');
     }

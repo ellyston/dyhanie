@@ -80,7 +80,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Локально + кэш + сервер.
-    Future<void> _persistAvatar(Uint8List bytes, String username) async {
+  Future<void> _persistAvatar(Uint8List bytes, String username) async {
+    // не раздувать payload
+    // при pick уже лучше: maxWidth: 512, imageQuality: 70
+
     final b64 = base64Encode(bytes);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(avatarKey, b64);
@@ -88,36 +91,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       await DyhanieApi.instance.connect();
-      await DyhanieApi.instance.sessionBind(username);
+      await DyhanieApi.instance.sessionBind(username.toLowerCase().trim());
       await DyhanieApi.instance.avatarSet(b64);
       await AvatarCache.saveBytes(
         username,
         bytes,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       );
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Аватар локально, на сервер: $e')),
+        );
+      }
+      rethrow; // или не rethrow, но UI должен знать
+    }
   }
 
   Future<void> _changeAvatar() async {
     final img = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 70,
     );
     if (img == null) return;
 
     final bytes = await img.readAsBytes();
     setState(() => avatarBytes = bytes);
 
-    await _persistAvatar(bytes, widget.username);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(L.t('avatar_updated'))),
-    );
+    try {
+      await _persistAvatar(bytes, widget.username);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(L.t('avatar_updated'))),
+      );
+    } catch (_) {
+      // ошибка уже в SnackBar из _persistAvatar
+    }
   }
-
+  
   Future<void> _save() async {
     final name = _nameCtrl.text.trim().toLowerCase();
     if (name.length < 3 || !RegExp(r'^[a-z0-9]+$').hasMatch(name)) {

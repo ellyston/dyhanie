@@ -27,7 +27,12 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   bool _saving = false;
 
   Future<void> _pickAvatar() async {
-    final img = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 512);
+    final img = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 70,
+    );
     if (img != null) {
       final bytes = await img.readAsBytes();
       setState(() => _avatar = bytes);
@@ -66,23 +71,34 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('username', username);
 
-      // аватар: локально всегда; сервер — best effort
       if (_avatar != null) {
         final b64 = base64Encode(_avatar!);
         await prefs.setString('avatar', b64);
-        await AvatarCache.saveBytes(username, _avatar!);
+        await AvatarCache.saveBytes(
+          username,
+          _avatar!,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        );
+
         try {
           await DyhanieApi.instance.avatarSet(b64);
-        } catch (_) {
-          // не валим регистрацию: имя уже создано
-          // можно показать мягкое предупреждение на Home позже
+        } catch (e) {
+          // Регистрацию НЕ откатываем — ник уже на сервере
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Профиль создан. Аватар на сервер не загрузился: $e',
+              ),
+            ),
+          );
+          // дальше всё равно идём на Home
         }
       }
 
       if (!mounted) return;
       Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        // ... как было, HomeScreen
       );
     } on TimeoutException catch (e) {
       if (!mounted) return;
