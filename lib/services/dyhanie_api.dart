@@ -131,11 +131,11 @@ class DyhanieApi {
     return m?['data']?.toString();
   }
 
-  /// data + updated_at (для инвалидации кэша)
-  Future<Map<String, dynamic>?> avatarGetWithMeta(String username) async {
+    Future<Map<String, dynamic>?> avatarGetWithMeta(String username) async {
     final r = await request(
       'avatar.get',
       payload: {'username': username.toLowerCase().trim()},
+      timeout: const Duration(seconds: 45), // base64 может быть тяжёлым
     );
     if (r['ok'] != true) return null;
     final p = r['payload'];
@@ -147,7 +147,7 @@ class DyhanieApi {
       'updated_at': p['updated_at'],
     };
   }
-
+  
   Future<void> usernameRename(String from, String to) async {
     final r = await request(
       'username.rename',

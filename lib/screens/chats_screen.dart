@@ -431,13 +431,17 @@ class _ChatsScreenState extends State<ChatsScreen> {
     );
   }
 
-  Future<void> _ensureAvatar(String other, String dialogId) async {
+    Future<void> _ensureAvatar(String other, String dialogId) async {
     if (other.isEmpty) return;
+
     final bytes = await AvatarCache.fetch(
       other,
+      forceNetwork: true,
       bindUsername: widget.myUsername,
     );
+
     if (!mounted || bytes == null) return;
+
     final prev = items[dialogId];
     if (prev == null) return;
 
@@ -451,7 +455,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         hasOutbox: prev.hasOutbox,
         isSaved: prev.isSaved,
         preview: prev.preview,
-        avatarBytes: bytes, // всегда пишем bytes, не prev
+        avatarBytes: bytes, // записать bytes с сервера
       );
     });
   }

@@ -113,8 +113,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return otherUser;
   }
 
-    Future<void> _loadAvatars() async {
+   Future<void> _loadAvatars() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // --- свой аватар из prefs ---
     Uint8List? mine;
     final myRaw = prefs.getString('avatar');
     if (myRaw != null && myRaw.isNotEmpty) {
@@ -124,19 +126,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
 
+    // --- аватар собеседника с сервера ---
     Uint8List? otherBytes;
     final other = otherUser ?? _otherFromRoomCode();
     if (other != null && other.isNotEmpty) {
       otherBytes = await AvatarCache.fetch(
         other,
-        bindUsername: widget.username,
+        forceNetwork: true,              // всегда спросить сервер
+        bindUsername: widget.username,   // session.bind от своего имени
       );
     }
 
     if (!mounted) return;
     setState(() {
       myAvatarBytes = mine;
-      otherAvatarBytes = otherBytes;
+      otherAvatarBytes = otherBytes;     // поле state, не local otherBytes
     });
   }
 
@@ -212,7 +216,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  Future<void> _bootstrapPeer() async {
+    Future<void> _bootstrapPeer() async {
     final other = _otherFromRoomCode();
     if (other == null || other.isEmpty) return;
     if (!mounted) return;
@@ -229,9 +233,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       contacts.add(other);
       await prefs.setStringList('contacts', contacts);
     }
+
+    // 1) Быстро забрать сообщения с сервера
+    await _syncServerMessages();
+    await UnreadChatsService.instance.clear(widget.roomCode);
+    DyhanieApi.instance.chatNudgeAck(room: widget.roomCode).catchError((_) {});
+
+    // 2) Outbox в UI
+    await _loadOutboxIntoUi(other);
+
+    // 3) Только потом P2P
+    if (!mounted) return;
     await _startP2P(other);
     await _clearMyIncomingSignal();
-    await _loadOutboxIntoUi(other);
   }
 
   Future<void> _loadOutboxIntoUi(String other) async {
@@ -279,7 +293,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     Future.delayed(const Duration(milliseconds: 200), _bootstrapPeer);
     _listenServerMessages();
     _listenIncomingCalls();
-    Future.delayed(const Duration(milliseconds: 400), _syncServerMessages);
     UnreadChatsService.instance.startListening(openRoomCode: widget.roomCode);
     UnreadChatsService.instance.clear(widget.roomCode);
     DyhanieApi.instance
@@ -287,13 +300,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
        .catchError((_) {});
   }
 
-  @override
+    @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _clearMyIncomingSignal();
-      if (otherUser != null && _p2p == null) {
-        _startP2P(otherUser!);
-      }
+      Future(() async {
+        await _syncServerMessages();
+        if (!mounted) return;
+        if (otherUser != null && _p2p == null) {
+          await _startP2P(otherUser!);
+        }
+      });
     }
   }
 
@@ -372,10 +389,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _syncServerMessages() async {
     if (blockServerMessages) return;
     try {
-      final list = await DyhanieApi.instance.msgSync();
-      for (final p in list) {
-        _ingestServerMsg(p);
+      if (!DyhanieApi.instance.isConnected) {
+        await DyhanieApi.instance.connect();
       }
+      // sessionBind при необходимости…
+
+      final list = await DyhanieApi.instance.msgSync();
+      final forRoom = list.where((p) {
+        return (p['room']?.toString() ?? '') == widget.roomCode;
+      }).toList();
+
+      forRoom.sort((a, b) {
+        final ta = a['created_at'] is int ? a['created_at'] as int : 0;
+        final tb = b['created_at'] is int ? b['created_at'] as int : 0;
+        return ta.compareTo(tb);
+      });
+
+      for (final p in forRoom) {
+        _ingestServerMsg(p); // без await
+      }
+      if (mounted) _scrollEnd();
     } catch (_) {}
   }
 

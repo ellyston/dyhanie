@@ -156,14 +156,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _loadAvatarsFor(List<String>.from(contacts));
   }
 
-  Future<void> _loadAvatarsFor(List<String> names) async {
+    Future<void> _loadAvatarsFor(List<String> names) async {
     for (final name in names) {
       final bytes = await AvatarCache.fetch(
         name,
+        forceNetwork: true, // ← важно
         bindUsername: widget.myUsername,
       );
       if (!mounted) return;
-      setState(() => contactAvatars[name] = bytes);
+      if (bytes != null) {
+        setState(() => contactAvatars[name] = bytes);
+      }
     }
   }
 

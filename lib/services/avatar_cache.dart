@@ -57,8 +57,7 @@ class AvatarCache {
     return _decode(prefs.getString(keyFor(username)));
   }
 
-  /// 1) отдать кэш  2) обновить с сервера при необходимости
-  static Future<Uint8List?> fetch(
+    static Future<Uint8List?> fetch(
     String username, {
     bool forceNetwork = false,
     String? bindUsername,
@@ -70,19 +69,60 @@ class AvatarCache {
     final localTs = prefs.getInt(_tsKey(u)) ?? 0;
     final cached = await load(u);
 
-    // Быстрый ответ из кэша, если не форсим сеть
+    // Только кэш, если не форсим сеть и кэш есть
     if (!forceNetwork && cached != null && localTs > 0) {
-      // фоновое обновление (не ждём)
-      _refreshFromNetwork(u, localTs, bindUsername: bindUsername);
+      // всё равно обновим в фоне, но UI получит кэш сейчас
+      // ignore: unawaited_futures
+      _pullNetwork(u, localTs, bindUsername: bindUsername);
       return cached;
     }
 
-    return await _refreshFromNetwork(
+    return _pullNetwork(
       u,
       localTs,
       bindUsername: bindUsername,
       fallback: cached,
     );
+  }
+
+  static Future<Uint8List?> _pullNetwork(
+    String u,
+    int localTs, {
+    String? bindUsername,
+    Uint8List? fallback,
+  }) async {
+    try {
+      final api = DyhanieApi.instance;
+      if (!api.isConnected) {
+        await api.connect();
+      }
+      final bind = bindUsername?.toLowerCase().trim();
+      if (bind != null &&
+          bind.isNotEmpty &&
+          api.boundUsername != bind) {
+        try {
+          await api.sessionBind(bind);
+        } catch (_) {}
+      }
+
+      final r = await api.avatarGetWithMeta(u);
+      if (r == null) return fallback ?? await load(u);
+
+      final b64 = r['data']?.toString();
+      if (b64 == null || b64.isEmpty) return fallback ?? await load(u);
+
+      final remoteTs = r['updated_at'] is int
+          ? r['updated_at'] as int
+          : int.tryParse('${r['updated_at']}') ?? 0;
+
+      await save(u, b64, updatedAt: remoteTs > 0 ? remoteTs : DateTime.now().millisecondsSinceEpoch);
+
+      final decoded = _decode(b64);
+      return decoded ?? fallback;
+    } catch (e) {
+      // временно можно debugPrint('[avatar] $u $e');
+      return fallback ?? await load(u);
+    }
   }
 
   static Future<Uint8List?> _refreshFromNetwork(
