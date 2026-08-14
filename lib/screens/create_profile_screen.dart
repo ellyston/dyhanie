@@ -79,11 +79,9 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
           _avatar!,
           updatedAt: DateTime.now().millisecondsSinceEpoch,
         );
-
         try {
           await DyhanieApi.instance.avatarSet(b64);
         } catch (e) {
-          // Регистрацию НЕ откатываем — ник уже на сервере
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -92,13 +90,13 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
               ),
             ),
           );
-          // дальше всё равно идём на Home
         }
       }
 
       if (!mounted) return;
       Navigator.pushReplacement(
-        // ... как было, HomeScreen
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
     } on TimeoutException catch (e) {
       if (!mounted) return;
