@@ -1,7 +1,8 @@
 name: dyhanie
 description: Эфемерный P2P мессенджер Дыхание
 publish_to: 'none'
-version: 1.0.0+3
+version: 1.0.0+4
+
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
