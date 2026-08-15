@@ -24,9 +24,14 @@ dependencies:
   google_fonts: ^6.2.1
   web_socket_channel: ^3.0.0
   shorebird_code_push: ^2.0.4
-  record: ^5.1.2
   audioplayers: ^6.1.0
-  permission_handler: ^11.3.1
+  permission_handler: ^11.3.1 
+  package_info_plus: ^8.0.0
+
+dependency_overrides:
+  record: 6.1.1
+  record_linux: 1.2.1
+  record_platform_interface: 1.4.0
 
 dev_dependencies:
   flutter_test:
@@ -38,3 +43,4 @@ flutter:
   assets:
     - assets/images/welcome_logo.png
     - assets/images/welcome_bg.png
+    - shorebird.yaml

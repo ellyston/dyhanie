@@ -7,6 +7,8 @@ import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 import '../services/theme_controller.dart';
 import '../services/theme_service.dart';
+import '../services/app_version_service.dart';
+
 import 'ask_question_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'energy_saving_screen.dart';
@@ -26,6 +28,16 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  String _versionLabel = '…';
+
+  @override
+  void initState() {
+    super.initState();
+    AppVersionService.instance.label().then((v) {
+      if (mounted) setState(() => _versionLabel = v);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -179,12 +191,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _tile(
                 icon: AppIcons.info,
                 title: L.t('about'),
-                subtitle: L.t('about_sub'),
-                onTap: () {
+                subtitle: _versionLabel,
+                onTap: () async {
+                  final ver = await AppVersionService.instance.label();
+                  if (!context.mounted) return;
                   showAboutDialog(
                     context: context,
                     applicationName: L.t('app_name'),
-                    applicationVersion: '0.1.0',
+                    applicationVersion: ver,
                     applicationLegalese: L.t('about_legalese'),
                   );
                 },
