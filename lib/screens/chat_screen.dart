@@ -747,6 +747,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             serverRelayMode == ServerRelayMode.soft);
 
     if (!canP2P && !canServer && !useOutbox) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Нет канала: нужен P2P или режим сервера open'),
+          ),
+        );
+      }
       return;
     }
     if ((canServer || useOutbox) && other == null) {
@@ -899,27 +906,70 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _onMediaRecordEnd(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) return;
 
-    final path = await _audioRecorder.stop();
+    String? path;
+    try {
+      path = await _audioRecorder.stop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Стоп записи: $e')),
+        );
+      }
+      return;
+    }
+
     final started = _mediaRecordStarted;
     _mediaRecordPath = null;
     _mediaRecordStarted = null;
 
-    if (path == null || started == null) return;
+    if (path == null || path.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Файл записи пуст')),
+        );
+      }
+      return;
+    }
 
-    final ms = DateTime.now().difference(started).inMilliseconds;
-    if (ms < 500) {
+    final ms = started == null
+        ? 0
+        : DateTime.now().difference(started).inMilliseconds;
+
+    if (ms < 400) {
       try {
         await File(path).delete();
       } catch (_) {}
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Слишком коротко')),
+        );
+      }
       return;
     }
 
     final file = File(path);
-    if (!await file.exists()) return;
+    if (!await file.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Файл не найден')),
+        );
+      }
+      return;
+    }
+
     final bytes = await file.readAsBytes();
     try {
       await file.delete();
     } catch (_) {}
+
+    if (bytes.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Пустые байты')),
+        );
+      }
+      return;
+    }
 
     if (bytes.length > 500000) {
       if (mounted) {
@@ -930,12 +980,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
-    await _send(
-      mediaB64: base64Encode(bytes),
-      msgType: 'voice',
-      durationMs: ms.clamp(0, 60000),
-      mime: 'audio/m4a',
-    );
+    try {
+      await _send(
+        mediaB64: base64Encode(bytes),
+        msgType: 'voice',
+        durationMs: ms.clamp(0, 60000),
+        mime: 'audio/m4a',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Отправка: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _onMediaRecordCancel(MediaStripMode mode) async {
