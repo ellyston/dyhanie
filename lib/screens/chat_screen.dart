@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../models/server_relay_mode.dart';
 import '../services/chat_history_service.dart';
@@ -15,14 +19,17 @@ import '../services/locale_service.dart';
 import '../services/p2p_service.dart';
 import '../services/dyhanie_api.dart';
 import '../services/unread_chats_service.dart';
-import '../widgets/chat_app_bar.dart';
-import '../widgets/chat_input_bar.dart';
-import '../widgets/chat_message_list.dart';
 import '../services/avatar_cache.dart';
 import '../services/icon_style_service.dart';
 import '../services/incoming_call_service.dart';
 import '../services/outbox_service.dart';
 import '../services/contact_invite_service.dart';
+
+import '../widgets/chat_app_bar.dart';
+import '../widgets/chat_input_bar.dart';
+import '../widgets/chat_message_list.dart';
+import '../widgets/chat_media_strip.dart';
+
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
 
@@ -49,6 +56,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _wipe = ChatWipeService();
   final _history = ChatHistoryService();
   final _outbox = OutboxService();
+  final _audioRecorder = AudioRecorder();
+  String? _mediaRecordPath;
+  DateTime? _mediaRecordStarted;
   bool _flushingOutbox = false;
 
   List<Map<String, dynamic>> messages = [];
@@ -576,6 +586,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'replyUser': data['replyUser'],
       'image': data['image'],
       'status': 'delivered',
+      'media': data['media'],
+      'msg_type': data['msg_type'] ?? 'text',
+      'duration_ms': data['duration_ms'],
+      'mime': data['mime'],
     };
     setState(() => messages = [...messages, msg]);
     if (!isSavedChat && (msg['ttl'] as int) > 0) _startTimer(msg);
@@ -673,6 +687,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final j = jsonDecode(body) as Map<String, dynamic>;
         text = j['text']?.toString() ?? '';
         image = j['image']?.toString();
+
+        final media = j['media']?.toString();
+        final msgType = j['msg_type']?.toString() ?? 'text';
+        final durationMs = j['duration_ms'] is int ? j['duration_ms'] as int : null;
         replyText = j['replyText']?.toString();
         replyUser = j['replyUser']?.toString();
         if (j['ttl'] is int) ttl = j['ttl'] as int;
@@ -706,7 +724,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
 
-  Future<void> _send({String? imageB64}) async {
+  Future<void> _send({
+    String? imageB64,
+    String? mediaB64,
+    String msgType = 'text',
+    int? durationMs,
+    String? mime,
+  }) async {
     final text = _controller.text.trim();
     if (text.isEmpty && imageB64 == null) return;
 
@@ -766,6 +790,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'replyUser': replyTo?['username'],
       'image': imageB64,
       'status': status,
+      'image': imageB64,
+      'media': mediaB64,
+      'msg_type': msgType,
+      'duration_ms': durationMs,
+      'mime': mime,
     };
 
     setState(() {
@@ -785,6 +814,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         'replyText': msg['replyText'],
         'replyUser': msg['replyUser'],
         'image': imageB64,
+        'media': mediaB64,
+        'msg_type': msgType,
+        'duration_ms': durationMs,
+        'mime': mime,
       }));
     } else if (canServer && !useOutbox) {
       final body = jsonEncode({
@@ -793,6 +826,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         'replyText': msg['replyText'],
         'replyUser': msg['replyUser'],
         'image': imageB64,
+        'media': mediaB64,
+        'msg_type': msgType,
+        'duration_ms': durationMs,
+        'mime': mime,
       });
       try {
         await DyhanieApi.instance.msgSend(
@@ -800,7 +837,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           to: other!,
           msgId: key,
           body: body,
-          contentType: imageB64 != null ? 'image' : 'text',
+          contentType: imageB64 != null
+             ? msgType
+             : (imageB64 != null ? 'image' : 'text'),
         );
         _knownServerKeys.add(key);
       } catch (e) {
@@ -818,6 +857,98 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     HapticFeedback.lightImpact();
     if (!wipeOnExit) {
       await _history.save(widget.roomCode, messages);
+    }
+  }
+
+    Future<void> _onMediaRecordStart(MediaStripMode mode) async {
+    if (mode == MediaStripMode.video) {
+      // пока только UI-режим; запись видео — следующим шагом
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Запись видео — скоро')),
+        );
+      }
+      return;
+    }
+
+    final mic = await Permission.microphone.request();
+    if (!mic.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Нет доступа к микрофону')),
+        );
+      }
+      return;
+    }
+
+    final dir = await getTemporaryDirectory();
+    _mediaRecordPath =
+        '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    _mediaRecordStarted = DateTime.now();
+
+    await _audioRecorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        bitRate: 64000,
+        sampleRate: 44100,
+      ),
+      path: _mediaRecordPath!,
+    );
+  }
+
+  Future<void> _onMediaRecordEnd(MediaStripMode mode) async {
+    if (mode == MediaStripMode.video) return;
+
+    final path = await _audioRecorder.stop();
+    final started = _mediaRecordStarted;
+    _mediaRecordPath = null;
+    _mediaRecordStarted = null;
+
+    if (path == null || started == null) return;
+
+    final ms = DateTime.now().difference(started).inMilliseconds;
+    if (ms < 500) {
+      try {
+        await File(path).delete();
+      } catch (_) {}
+      return;
+    }
+
+    final file = File(path);
+    if (!await file.exists()) return;
+    final bytes = await file.readAsBytes();
+    try {
+      await file.delete();
+    } catch (_) {}
+
+    if (bytes.length > 500000) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L.t('file_too_big'))),
+        );
+      }
+      return;
+    }
+
+    await _send(
+      mediaB64: base64Encode(bytes),
+      msgType: 'voice',
+      durationMs: ms.clamp(0, 60000),
+      mime: 'audio/m4a',
+    );
+  }
+
+  Future<void> _onMediaRecordCancel(MediaStripMode mode) async {
+    try {
+      await _audioRecorder.stop();
+    } catch (_) {}
+    final p = _mediaRecordPath;
+    _mediaRecordPath = null;
+    _mediaRecordStarted = null;
+    if (p != null) {
+      try {
+        await File(p).delete();
+      } catch (_) {}
     }
   }
   
@@ -1227,6 +1358,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _apiMsgSub?.cancel();
     _p2p?.dispose();
     _callSignalSub?.cancel();
+    _audioRecorder.dispose();
     for (final t in _timers.values) {
       t.cancel();
     }
@@ -1380,15 +1512,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
-              ChatInputBar(
-                controller: _controller,
-                p2pConnected: p2pConnected,
-                blockServerMessages: blockServerMessages,
-                replyTo: replyTo,
-                onAttach: _attach,
-                onEmoji: _openEmoji,
-                onSend: () => _send(),
-                onClearReply: () => setState(() => replyTo = null),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ChatInputBar(
+                    controller: _controller,
+                    p2pConnected: p2pConnected,
+                    blockServerMessages: blockServerMessages,
+                    replyTo: replyTo,
+                    onAttach: _attach,
+                    onEmoji: _openEmoji,
+                    onSend: () => _send(),
+                    onClearReply: () => setState(() => replyTo = null),
+                  ),
+                  ChatMediaStrip(
+                    onRecordStart: _onMediaRecordStart,
+                    onRecordEnd: _onMediaRecordEnd,
+                    onRecordCancel: _onMediaRecordCancel,
+                  ),
+                ],
               ),
             ],
           ),

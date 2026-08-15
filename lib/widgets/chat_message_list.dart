@@ -6,6 +6,8 @@ import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/icon_style_service.dart';
 
+import 'voice_message_bubble.dart';
+
 class ChatMessageList extends StatelessWidget {
   final List<Map<String, dynamic>> messages;
   final String myUsername;
@@ -169,6 +171,20 @@ class ChatMessageList extends StatelessWidget {
                             style: FontService.style(fontSize: 40, color: onSurf),
                           ),
                         ),
+                      ),
+                    ),
+                  if ((msg['msg_type']?.toString() == 'voice') &&
+                      (msg['media']?.toString().isNotEmpty ?? false))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: VoiceMessageBubble(
+                        messageKey: key,
+                        base64Data: msg['media'].toString(),
+                        durationMs: msg['duration_ms'] is int
+                            ? msg['duration_ms'] as int
+                            : 0,
+                        onSurf: onSurf,
+                        fontSize: fontSize,
                       ),
                     ),
                   if (text.isNotEmpty)
