@@ -64,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _flushingOutbox = false;
   bool _mediaActuallyRecording = false;
   bool _micReady = false;
+  Timer? _presenceTimer;
 
   List<Map<String, dynamic>> messages = [];
   final _timers = <String, Timer>{};
@@ -327,6 +328,53 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await _startP2P(other);
     await _clearMyIncomingSignal();
     await _announceInChat(true);
+  }
+
+  void _startPresencePolling() {
+    _presenceTimer?.cancel();
+    final peer = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
+    if (peer == null || peer.isEmpty) return;
+
+    // сразу один раз
+    _tickPresence(peer);
+
+    _presenceTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _tickPresence(peer);
+    });
+  }
+
+  Future<void> _tickPresence(String peer) async {
+    try {
+      final api = DyhanieApi.instance;
+      if (!api.isConnected) await api.connect();
+      final me = widget.username.toLowerCase().trim();
+      if (api.boundUsername?.toLowerCase() != me) {
+        await api.sessionBind(me);
+      }
+
+      // «я в этом диалоге»
+      await api.chatPresence(room: widget.roomCode, inside: true);
+
+      final online = await api.chatPresenceQuery(
+        room: widget.roomCode,
+        peer: peer,
+      );
+      if (!mounted) return;
+      if (otherOnline != online) {
+        setState(() => otherOnline = online);
+      }
+    } catch (_) {
+      // сеть — не дергаем UI
+    }
+  }
+
+  void _stopPresencePolling() {
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+    final peer = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
+    DyhanieApi.instance
+        .chatPresence(room: widget.roomCode, inside: false)
+        .catchError((_) {});
   }
 
   Future<void> _announceInChat(bool inside) async {
@@ -1401,6 +1449,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _exitRoom() async {
+    _startPresencePolling();
     await _announceInChat(false); 
     await _wipe.leavePresence(
       roomCode: widget.roomCode,
@@ -1427,7 +1476,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     Navigator.pop(context);
   }
-
 
   void _listenIncomingCalls() {
     _callSignalSub?.cancel();
@@ -1825,6 +1873,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _startPresencePolling();
     IncomingCallService.instance.setChatHandlingRoom(null);
     WidgetsBinding.instance.removeObserver(this);
     UnreadChatsService.instance.startListening();

@@ -384,5 +384,30 @@ class DyhanieApi {
     return {'nudges': nudges, 'badge': badge};
   }
   
+  Future<void> chatPresence({
+    required String room,
+    required bool inside,
+  }) async {
+    final r = await request(
+      'chat.presence',
+      payload: {'room': room, 'in': inside},
+    );
+    if (r['ok'] != true) {
+      throw Exception(r['error']?['code'] ?? 'PRESENCE_FAIL');
+    }
+  }
 
+  Future<bool> chatPresenceQuery({
+    required String room,
+    required String peer,
+  }) async {
+    final r = await request(
+      'chat.presence_query',
+      payload: {'room': room, 'peer': peer},
+    );
+    if (r['ok'] != true) return false;
+    final p = r['payload'];
+    if (p is Map) return p['online'] == true;
+    return false;
+  }
 }
