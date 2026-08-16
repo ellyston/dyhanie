@@ -112,20 +112,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   String? _otherFromRoomCode() {
     if (!_looksLikeDirectDialog(widget.roomCode)) return null;
-    final me = widget.username;
-    final code = widget.roomCode;
+    final me = widget.username.toLowerCase().trim();
+    final code = widget.roomCode.toLowerCase().trim();
     final parts = code.split('_');
     if (parts.length == 2) {
-      return parts[0] == me ? parts[1] : parts[0];
+      if (parts[0] == me) return parts[1];
+      if (parts[1] == me) return parts[0];
+      return null;
     }
     if (code.startsWith('${me}_')) return code.substring(me.length + 1);
     if (code.endsWith('_$me')) {
       return code.substring(0, code.length - me.length - 1);
     }
-    return otherUser;
+    return otherUser?.toLowerCase().trim();
   }
 
-   Future<void> _loadAvatars() async {
+  Future<void> _loadAvatars() async {
     final prefs = await SharedPreferences.getInstance();
 
     // --- свой аватар из prefs ---
@@ -742,7 +744,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
 
-  Future<void> _send({
+    Future<void> _send({
     String? imageB64,
     String? mediaB64,
     String msgType = 'text',
@@ -750,16 +752,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     String? mime,
   }) async {
     final text = _controller.text.trim();
-    if (text.isEmpty && imageB64 == null) return;
+    if (text.isEmpty && imageB64 == null && mediaB64 == null) return;
 
-    final other = otherUser ?? _otherFromRoomCode();
-    final canP2P =
-        p2pConnected && _p2p != null && _p2p!.isOpen;
-
-    // open — сервер всегда можно; soft/hard — сервер выкл
+    final other = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
+    final canP2P = p2pConnected && _p2p != null && _p2p!.isOpen;
     final canServer = serverRelayMode == ServerRelayMode.open;
-
-    // outbox только hard (и по желанию soft). НЕ open.
     final useOutbox = !canP2P &&
         (serverRelayMode == ServerRelayMode.hard ||
             serverRelayMode == ServerRelayMode.soft);
@@ -767,14 +764,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!canP2P && !canServer && !useOutbox) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Нет канала: нужен P2P или режим сервера open'),
-          ),
+          const SnackBar(content: Text('Нет канала отправки')),
         );
       }
       return;
     }
-    if ((canServer || useOutbox) && other == null) {
+
+    if ((canServer || useOutbox) && (other == null || other.isEmpty)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не известен собеседник (other)')),
+        );
+      }
       return;
     }
 
@@ -791,19 +792,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         to: other!,
         text: text,
         ttl: selectedTime,
-        image: imageB64,
+        image: imageB64 ?? mediaB64,
         replyText: replyTo?['text']?.toString(),
         replyUser: replyTo?['username']?.toString(),
       );
       key = ob.id;
       status = 'pending';
     } else {
-      // open + нет P2P → сервер
       key = 'srv_$ts';
       status = 'sent';
     }
 
-    final msg = {
+    final effectiveType = mediaB64 != null
+        ? msgType
+        : (imageB64 != null ? 'image' : 'text');
+
+    final msg = <String, dynamic>{
       'key': key,
       'text': text,
       'username': widget.username,
@@ -814,12 +818,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'replyText': replyTo?['text'],
       'replyUser': replyTo?['username'],
       'image': imageB64,
-      'status': status,
-      'image': imageB64,
       'media': mediaB64,
-      'msg_type': msgType,
+      'msg_type': effectiveType,
       'duration_ms': durationMs,
       'mime': mime,
+      'status': status,
     };
 
     setState(() {
@@ -830,51 +833,52 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _scrollEnd();
 
     if (canP2P) {
-      _p2p!.send(jsonEncode({
-        'type': 'msg',
-        'key': key,
-        'text': text,
-        'timestamp': ts,
-        'ttl': selectedTime,
-        'replyText': msg['replyText'],
-        'replyUser': msg['replyUser'],
-        'image': imageB64,
-        'media': mediaB64,
-        'msg_type': msgType,
-        'duration_ms': durationMs,
-        'mime': mime,
-      }));
-    } else if (canServer && !useOutbox) {
-      final body = jsonEncode({
-        'text': text,
-        'ttl': selectedTime,
-        'replyText': msg['replyText'],
-        'replyUser': msg['replyUser'],
-        'image': imageB64,
-        'media': mediaB64,
-        'msg_type': msgType,
-        'duration_ms': durationMs,
-        'mime': mime,
-      });
       try {
-        await DyhanieApi.instance.msgSend(
-          room: widget.roomCode,
-          to: other!,
-          msgId: key,
-          body: body,
-          contentType: imageB64 != null
-             ? msgType
-             : (imageB64 != null ? 'image' : 'text'),
-        );
-        _knownServerKeys.add(key);
+        _p2p!.send(jsonEncode({
+          'type': 'msg',
+          'key': key,
+          'text': text,
+          'timestamp': ts,
+          'ttl': selectedTime,
+          'replyText': msg['replyText'],
+          'replyUser': msg['replyUser'],
+          'image': imageB64,
+          'media': mediaB64,
+          'msg_type': effectiveType,
+          'duration_ms': durationMs,
+          'mime': mime,
+        }));
       } catch (e) {
-        if (mounted) {
+        // fallback на сервер, если open
+        if (canServer && other != null) {
+          await _sendViaServer(
+            key: key,
+            other: other,
+            text: text,
+            imageB64: imageB64,
+            mediaB64: mediaB64,
+            msgType: effectiveType,
+            durationMs: durationMs,
+            mime: mime,
+          );
+        } else if (mounted) {
           setState(() {
             final i = messages.indexWhere((m) => m['key'] == key);
             if (i >= 0) messages[i]['status'] = 'error';
           });
         }
       }
+    } else if (canServer && !useOutbox) {
+      await _sendViaServer(
+        key: key,
+        other: other!,
+        text: text,
+        imageB64: imageB64,
+        mediaB64: mediaB64,
+        msgType: effectiveType,
+        durationMs: durationMs,
+        mime: mime,
+      );
     }
 
     await _notifyDirectIncoming();
@@ -882,6 +886,59 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     HapticFeedback.lightImpact();
     if (!wipeOnExit) {
       await _history.save(widget.roomCode, messages);
+    }
+  }
+
+  Future<void> _sendViaServer({
+    required String key,
+    required String other,
+    required String text,
+    String? imageB64,
+    String? mediaB64,
+    required String msgType,
+    int? durationMs,
+    String? mime,
+  }) async {
+    final body = jsonEncode({
+      'text': text,
+      'ttl': selectedTime,
+      'replyText': replyTo?['text'],
+      'replyUser': replyTo?['username'],
+      'image': imageB64,
+      'media': mediaB64,
+      'msg_type': msgType,
+      'duration_ms': durationMs,
+      'mime': mime,
+    });
+
+    try {
+      final api = DyhanieApi.instance;
+      if (!api.isConnected) {
+        await api.connect();
+      }
+      final me = widget.username.toLowerCase().trim();
+      if (api.boundUsername?.toLowerCase() != me) {
+        await api.sessionBind(me);
+      }
+
+      await api.msgSend(
+        room: widget.roomCode,
+        to: other,
+        msgId: key,
+        body: body,
+        contentType: msgType,
+      );
+      _knownServerKeys.add(key);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          final i = messages.indexWhere((m) => m['key'] == key);
+          if (i >= 0) messages[i]['status'] = 'error';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Сервер: $e')),
+        );
+      }
     }
   }
 
