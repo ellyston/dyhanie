@@ -21,6 +21,12 @@ class ChatHistoryService {
         'replyUser': m['replyUser'],
         'image': m['image'],
         'status': m['status'],
+        'msg_type': m['msg_type'],
+        'duration_ms': m['duration_ms'],
+        'mime': m['mime'],
+        'media_path': m['media_path'],
+        'has_media': (m['media'] != null && '${m['media']}'.isNotEmpty) ||
+            (m['media_path'] != null && '${m['media_path']}'.isNotEmpty),
       };
     }).toList();
     await prefs.setString(_key(roomCode), jsonEncode(list));
@@ -43,7 +49,6 @@ class ChatHistoryService {
     await prefs.remove(_key(roomCode));
   }
 
-  /// Список всех сохранённых чатов для экрана «Чаты».
   Future<List<Map<String, dynamic>>> listSaved() async {
     final prefs = await SharedPreferences.getInstance();
     final result = <Map<String, dynamic>>[];
@@ -65,8 +70,22 @@ class ChatHistoryService {
         if (ts >= lastTs) {
           lastTs = ts;
           final text = m['text']?.toString() ?? '';
+          final mt = m['msg_type']?.toString() ?? '';
           final hasImg = m['image'] != null;
-          preview = text.isNotEmpty ? text : (hasImg ? '🖼' : '');
+          final hasMedia = m['has_media'] == true ||
+              (m['media_path'] != null && '${m['media_path']}'.isNotEmpty);
+
+          if (text.isNotEmpty) {
+            preview = text;
+          } else if (mt == 'voice') {
+            preview = '🎤';
+          } else if (mt == 'video') {
+            preview = '🎬';
+          } else if (hasImg || hasMedia) {
+            preview = '🖼';
+          } else {
+            preview = '';
+          }
         }
       }
 

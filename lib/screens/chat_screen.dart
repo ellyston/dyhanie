@@ -25,6 +25,7 @@ import '../services/icon_style_service.dart';
 import '../services/incoming_call_service.dart';
 import '../services/outbox_service.dart';
 import '../services/contact_invite_service.dart';
+import '../services/media_message_cache.dart';
 
 import '../widgets/chat_app_bar.dart';
 import '../widgets/chat_input_bar.dart';
@@ -217,6 +218,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final saved = await _history.load(widget.roomCode);
       if (!mounted || saved.isEmpty) return;
 
+      await _hydrateMedia(saved);
+      if (!mounted) return;
+
       setState(() {
         final existingKeys = messages.map((m) => m['key']?.toString()).toSet();
         for (final m in saved) {
@@ -233,6 +237,51 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
       _scrollEnd();
     } catch (_) {}
+  }
+
+  /// base64 → файл на диске; в msg пишем media_path
+  Future<void> _persistMediaForMessage(Map<String, dynamic> msg) async {
+    final key = msg['key']?.toString() ?? '';
+    final media = msg['media']?.toString();
+    if (key.isEmpty || media == null || media.isEmpty) return;
+    if (msg['media_path'] != null &&
+        msg['media_path'].toString().isNotEmpty) {
+      return;
+    }
+
+    final path = await MediaMessageCache.instance.put(
+      roomCode: widget.roomCode,
+      msgKey: key,
+      base64Data: media,
+      msgType: msg['msg_type']?.toString(),
+      mime: msg['mime']?.toString(),
+    );
+    if (path != null) {
+      msg['media_path'] = path;
+    }
+  }
+
+  /// После load истории: media_path → media (base64) для UI / play
+  Future<void> _hydrateMedia(List<Map<String, dynamic>> list) async {
+    for (final m in list) {
+      final existing = m['media']?.toString();
+      if (existing != null && existing.isNotEmpty) continue;
+
+      final path = m['media_path']?.toString();
+      final b64 = await MediaMessageCache.instance.getBase64(path);
+      if (b64 != null) {
+        m['media'] = b64;
+      }
+    }
+  }
+
+  /// Сохранить медиа на диск + лёгкий JSON истории
+  Future<void> _saveHistory() async {
+    if (wipeOnExit) return;
+    for (final m in messages) {
+      await _persistMediaForMessage(m);
+    }
+    await _saveHistory();
   }
 
   Future<void> _notifyDirectIncoming() async {
@@ -526,7 +575,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       });
       if (!wipeOnExit) {
-        await _history.save(widget.roomCode, messages);
+        await _saveHistory();
       }
     } finally {
       _flushingOutbox = false;
@@ -686,12 +735,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _removeLocal(String key) {
-    _timers[key]?.cancel();
-    _timers.remove(key);
-    _remaining.remove(key);
-    if (mounted) {
-      setState(
-          () => messages = messages.where((m) => m['key'] != key).toList());
+    MediaMessageCache.instance.deleteKey(
+      roomCode: widget.roomCode,
+      msgKey: key,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      messages = messages.where((m) => m['key']?.toString() != key).toList();
+      // если чистите _remaining / _timers — как у вас было
+    });
+    if (!wipeOnExit) {
+      _saveHistory();
     }
   }
 
@@ -715,7 +770,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
 
-  void _ingestServerMsg(Map p) {
+  Future<void> _ingestServerMsg(Map p) async {
     if (blockServerMessages) return;
 
     final msgId = p['msg_id']?.toString() ?? '';
@@ -777,6 +832,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     _knownServerKeys.add(msgId);
 
+    // кэш на диск (и sent, и received)
+    await _persistMediaForMessage(msg);
+
     if (!mounted) return;
     setState(() => messages = [...messages, msg]);
     if (!isSavedChat && ttl > 0) _startTimer(msg);
@@ -784,6 +842,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
     UnreadChatsService.instance.clear(widget.roomCode);
+
+    if (!wipeOnExit) {
+      await _saveHistory();
+    }
   }
 
 
@@ -971,7 +1033,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _controller.clear();
     HapticFeedback.lightImpact();
     if (!wipeOnExit) {
-      await _history.save(widget.roomCode, messages);
+      await _saveHistory();
     }
   }
 
@@ -1338,14 +1400,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _exitRoom() async {
-    await _announceInChat(false);
+    Future<void> _exitRoom() async {
     await _wipe.leavePresence(
       roomCode: widget.roomCode,
       username: widget.username,
     );
 
     if (wipeOnExit) {
+      await MediaMessageCache.instance.clearRoom(widget.roomCode);
       await _history.clear(widget.roomCode);
       await _wipe.wipeEverywhere(
         roomCode: widget.roomCode,
@@ -1358,7 +1420,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         p2pConnected: p2pConnected,
       );
     } else {
-      await _history.save(widget.roomCode, messages);
+      await _saveHistory();
     }
 
     if (!mounted) return;
