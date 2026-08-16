@@ -410,28 +410,5 @@ class DyhanieApi {
     if (p is Map) return p['online'] == true;
     return false;
   }
-    Future<void> _tickPresence(String peer) async {
-    try {
-      final api = DyhanieApi.instance;
-      if (!api.isConnected) await api.connect();
-      final me = widget.username.toLowerCase().trim();
-      if (api.boundUsername?.toLowerCase() != me) {
-        await api.sessionBind(me);
-      }
-
-      // 1) я в чате — всегда
-      await api.chatPresence(room: widget.roomCode, inside: true);
-
-      // 2) статус peer
-      final online = await api.chatPresenceQuery(
-        room: widget.roomCode,
-        peer: peer.toLowerCase().trim(),
-      );
-
-      if (!mounted) return;
-      if (otherOnline != online) {
-        setState(() => otherOnline = online);
-      }
-    } catch (_) {}
-  }
+   
 }

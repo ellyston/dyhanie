@@ -1449,32 +1449,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _exitRoom() async {
-    _startPresencePolling();
-    await _announceInChat(false); 
-    await _wipe.leavePresence(
-      roomCode: widget.roomCode,
-      username: widget.username,
-    );
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
 
-    if (wipeOnExit) {
-      await MediaMessageCache.instance.clearRoom(widget.roomCode);
-      await _history.clear(widget.roomCode);
-      await _wipe.wipeEverywhere(
-        roomCode: widget.roomCode,
-        timers: _timers,
-        remaining: _remaining,
-        clearLocal: () {
-          if (mounted) setState(() => messages = []);
-        },
-        p2p: _p2p,
-        p2pConnected: p2pConnected,
-      );
-    } else {
-      await _saveHistory();
-    }
-
+    // UI уходит сразу
     if (!mounted) return;
     Navigator.pop(context);
+
+    // дальше без ожидания в UI-потоке навигации
+    unawaited(_cleanupAfterExit());
+  }
+
+  Future<void> _cleanupAfterExit() async {
+    try {
+      await DyhanieApi.instance
+          .chatPresence(room: widget.roomCode, inside: false)
+          .timeout(const Duration(milliseconds: 400));
+    } catch (_) {}
+    try {
+      if (!wipeOnExit) {
+        await _saveHistory();
+      } else {
+        await MediaMessageCache.instance.clearRoom(widget.roomCode);
+        await _history.clear(widget.roomCode);
+      }
+    } catch (_) {}
+    try {
+      _p2p?.dispose();
+    } catch (_) {}
   }
 
   void _listenIncomingCalls() {
