@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,22 +10,20 @@ import '../services/contact_invite_service.dart';
 import '../services/dialog_signal_service.dart';
 import '../services/font_service.dart';
 import '../services/icon_style_controller.dart';
-import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 import '../services/incoming_call_service.dart';
 import '../services/unread_chats_service.dart';
 
 import 'auto_lock_settings_screen.dart';
 import 'chats_screen.dart';
+import 'chat_screen.dart';
 import 'contacts_screen.dart';
+import 'join_room_screen.dart';
 import 'profile_screen.dart';
 import 'recovery_phrase_screen.dart';
 import 'settings_screen.dart';
 import 'vpn_screen.dart';
 import 'welcome_screen.dart';
-import 'chat_screen.dart';
-import 'join_room_screen.dart';
-
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -88,20 +86,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final name = prefs.getString('username') ?? '';
     final b64 = prefs.getString('avatar');
     Uint8List? bytes;
+
     await UnreadChatsService.instance.load();
     UnreadChatsService.instance.startListening();
     _unreadSub?.cancel();
     _unreadSub = UnreadChatsService.instance.changes.listen((_) {
       if (!mounted) return;
       setState(() {
-         chatsBadge = UnreadChatsService.instance.dialogCount;
+        chatsBadge = UnreadChatsService.instance.dialogCount;
       });
     });
-    if (mounted){ 
+    if (mounted) {
       setState(() {
         chatsBadge = UnreadChatsService.instance.dialogCount;
       });
     }
+
     if (b64 != null && b64.isNotEmpty) {
       try {
         bytes = base64Decode(b64);
@@ -198,8 +198,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _inviteSub?.cancel();
     _msgSignalSub?.cancel();
     _unreadSub?.cancel();
-    super.dispose();
     IncomingCallService.instance.detach();
+    super.dispose();
   }
 
   void _logout() {
@@ -248,85 +248,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _roundAction({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-    int badge = 0,
-  }) {
-    final onSurf = Theme.of(context).colorScheme.onSurface;
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(40),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: onSurf.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-                border: Border.all(color: onSurf.withValues(alpha: 0.2)),
-              ),
-              child: Icon(icon, color: onSurf.withValues(alpha: 0.75), size: 26),
-            ),
-            if (badge > 0)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 28,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _roundAction(
-                        icon: AppIcons.chat,
-                        tooltip: L.t('saved_chats'),
-                        badge: chatsBadge,
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  ChatsScreen(myUsername: username),
-                            ),
-                          );
-                          if (mounted) {
-                            setState(() => chatsBadge =
-                                UnreadChatsService.instance.dialogCount);
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 20),
-                      _roundAction(
-                        icon: AppIcons.contacts,
-                        tooltip: L.t('contacts'),
-                        badge: contactsBadge,
-                        onTap: _openContacts,
-                      ),
-                      const SizedBox(width: 20),
-                      _roundAction(
-                        icon: Icons.add_circle_outline,
-                        tooltip: L.t('create_room'),
-                        onTap: _createRoom,
-                      ),
-                      const SizedBox(width: 20),
-                      _roundAction(
-                        icon: Icons.meeting_room_outlined,
-                        tooltip: L.t('join_by_code'),
-                        onTap: _joinRoom,
-                      ),
-                    ],
-                  ),
-                ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _openProfile() async {
     await Navigator.push(
       context,
@@ -348,203 +269,293 @@ class _HomeScreenState extends State<HomeScreen> {
     await _refreshInviteBadge();
   }
 
+  Future<void> _openChats() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatsScreen(myUsername: username),
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        chatsBadge = UnreadChatsService.instance.dialogCount;
+      });
+    }
+  }
+
+  /// Текстовая ссылка в углах app bar
+  Widget _cornerLink({
+    required String label,
+    required VoidCallback onTap,
+    TextAlign align = TextAlign.left,
+    double opacity = 0.7,
+  }) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+        child: Text(
+          label,
+          textAlign: align,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: FontService.style(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            letterSpacing: 0.2,
+            color: onSurf.withValues(alpha: opacity),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Пункт под «Дыхание» + опциональный badge
+  Widget _mainLink({
+    required String label,
+    required VoidCallback onTap,
+    int badge = 0,
+  }) {
+    final onSurf = Theme.of(context).colorScheme.onSurface;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: FontService.style(
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.6,
+                color: onSurf.withValues(alpha: 0.85),
+              ),
+            ),
+            if (badge > 0) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                constraints: const BoxConstraints(minWidth: 18),
+                child: Text(
+                  badge > 99 ? '99+' : '$badge',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final onSurf = Theme.of(context).colorScheme.onSurface;
     final bg = Theme.of(context).scaffoldBackgroundColor;
 
     return AnimatedBuilder(
-      animation: IconStyleController.instance,
+      animation: Listenable.merge([
+        IconStyleController.instance,
+        // чтобы подписи обновлялись при смене языка
+        // если LocaleController — ChangeNotifier:
+        // LocaleController.instance,
+      ]),
       builder: (context, _) {
         return Scaffold(
           backgroundColor: bg,
-          appBar: AppBar(
-            backgroundColor: bg,
-            elevation: 0,
-            toolbarHeight: 96,
-            leadingWidth: 56,
-            leading: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: L.t('settings'),
-                  icon: Icon(AppIcons.settings,
-                      color: onSurf.withValues(alpha: 0.75)),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SettingsScreen(),
-                      ),
-                    );
-                  },
-                ),
-                IconButton(
-                  tooltip: L.t('logout'),
-                  icon: Icon(AppIcons.logout,
-                      color: onSurf.withValues(alpha: 0.55)),
-                  onPressed: _logout,
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                tooltip: L.t('auto_lock'),
-                icon: Icon(AppIcons.timer,
-                    color: onSurf.withValues(alpha: 0.75)),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const AutoLockSettingsScreen(),
-                    ),
-                  );
-                },
-              ),
-              IconButton(
-                tooltip: L.t('clear_cache'),
-                icon: Icon(AppIcons.clean,
-                    color: onSurf.withValues(alpha: 0.75)),
-                onPressed: _clearCache,
-              ),
-              IconButton(
-                tooltip: L.t('vpn'),
-                icon: Icon(AppIcons.shield,
-                    color: onSurf.withValues(alpha: 0.75)),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const VpnScreen()),
-                  );
-                },
-              ),
-            ],
-          ),
           body: SafeArea(
-            child: Stack(
+            child: Column(
               children: [
-                Align(
-                  alignment: const Alignment(0, -0.55),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                // —— Верх: слева настройки/выход, справа vpn/кэш/автолок ——
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      GestureDetector(
-                        onTap: _openProfile,
+                      Expanded(
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: SizedBox(
-                                width: 192,
-                                height: 288,
-                                child: avatarBytes != null &&
-                                        avatarBytes!.isNotEmpty
-                                    ? Image.memory(
-                                        avatarBytes!,
-                                        fit: BoxFit.cover,
-                                        width: 192,
-                                        height: 288,
-                                        gaplessPlayback: true,
-                                        errorBuilder: (_, __, ___) =>
-                                            Container(
-                                          color:
-                                              onSurf.withValues(alpha: 0.08),
-                                          alignment: Alignment.center,
-                                          child: Icon(
-                                            Icons.broken_image,
-                                            color: onSurf.withValues(
-                                                alpha: 0.35),
-                                          ),
-                                        ),
-                                      )
-                                    : Container(
-                                        color:
-                                            onSurf.withValues(alpha: 0.08),
-                                        alignment: Alignment.center,
-                                        child: Text(
-                                          username.isNotEmpty
-                                              ? username[0].toUpperCase()
-                                              : '?',
-                                          style: FontService.style(
-                                            fontSize: 64,
-                                            color: onSurf,
-                                          ),
-                                        ),
-                                      ),
-                              ),
+                            _cornerLink(
+                              label: L.t('settings'),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const SettingsScreen(),
+                                  ),
+                                );
+                              },
                             ),
-                            const SizedBox(height: 14),
-                            Text(
-                              '@$username',
-                              style: FontService.style(
-                                fontSize: 18,
-                                color: onSurf.withValues(alpha: 0.75),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              L.t('profile'),
-                              style: FontService.style(
-                                fontSize: 12,
-                                color: onSurf.withValues(alpha: 0.35),
-                              ),
+                            _cornerLink(
+                              label: L.t('logout'),
+                              onTap: _logout,
+                              opacity: 0.5,
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      Text(
-                        L.t('app_name'),
-                        style: FontService.style(
-                          fontSize: 36,
-                          fontWeight: FontWeight.w300,
-                          letterSpacing: 3,
-                          color: onSurf,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            _cornerLink(
+                              label: L.t('vpn'),
+                              align: TextAlign.right,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const VpnScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                            _cornerLink(
+                              label: L.t('clear_cache'),
+                              align: TextAlign.right,
+                              onTap: _clearCache,
+                            ),
+                            _cornerLink(
+                              label: L.t('auto_lock'),
+                              align: TextAlign.right,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const AutoLockSettingsScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 28,
-                  child: Row(
-                    children: [
-                      const Expanded(child: SizedBox()),
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _roundAction(
-                              icon: AppIcons.chat,
-                              tooltip: L.t('saved_chats'),
-                              badge: chatsBadge,
-                              onTap: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        ChatsScreen(myUsername: username),
+
+                // —— Центр: аватар + имя + Дыхание + 4 пункта ——
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: _openProfile,
+                            child: Column(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: SizedBox(
+                                    width: 168,
+                                    height: 252,
+                                    child: avatarBytes != null &&
+                                            avatarBytes!.isNotEmpty
+                                        ? Image.memory(
+                                            avatarBytes!,
+                                            fit: BoxFit.cover,
+                                            width: 168,
+                                            height: 252,
+                                            gaplessPlayback: true,
+                                            errorBuilder: (_, __, ___) =>
+                                                Container(
+                                              color: onSurf.withValues(
+                                                  alpha: 0.08),
+                                              alignment: Alignment.center,
+                                              child: Icon(
+                                                Icons.broken_image,
+                                                color: onSurf.withValues(
+                                                    alpha: 0.35),
+                                              ),
+                                            ),
+                                          )
+                                        : Container(
+                                            color: onSurf.withValues(
+                                                alpha: 0.08),
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              username.isNotEmpty
+                                                  ? username[0].toUpperCase()
+                                                  : '?',
+                                              style: FontService.style(
+                                                fontSize: 56,
+                                                color: onSurf,
+                                              ),
+                                            ),
+                                          ),
                                   ),
-                                );
-                                if (mounted) {
-                                  setState(() => chatsBadge =
-                                      UnreadChatsService.instance.dialogCount);
-                                }
-                              },
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  '@$username',
+                                  style: FontService.style(
+                                    fontSize: 17,
+                                    color: onSurf.withValues(alpha: 0.75),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  L.t('profile'),
+                                  style: FontService.style(
+                                    fontSize: 11,
+                                    color: onSurf.withValues(alpha: 0.35),
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 28),
-                            _roundAction(
-                              icon: AppIcons.contacts,
-                              tooltip: L.t('contacts'),
-                              badge: contactsBadge,
-                              onTap: _openContacts,
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            L.t('app_name'),
+                            style: FontService.style(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w300,
+                              letterSpacing: 3,
+                              color: onSurf,
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // 4 строки под названием
+                          _mainLink(
+                            label: L.t('create_room'),
+                            onTap: _createRoom,
+                          ),
+                          _mainLink(
+                            label: L.t('join_by_code'),
+                            onTap: _joinRoom,
+                          ),
+                          _mainLink(
+                            label: L.t('saved_chats'),
+                            badge: chatsBadge,
+                            onTap: _openChats,
+                          ),
+                          _mainLink(
+                            label: L.t('contacts'),
+                            badge: contactsBadge,
+                            onTap: _openContacts,
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ],
