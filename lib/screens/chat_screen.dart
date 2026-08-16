@@ -346,12 +346,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _updateConnectionMode() {
     final mode = p2pConnected
-        ? L.t('p2p_connected')
-        : (otherUser != null
-            ? (blockServerMessages
-                ? L.t('p2p_only_wait')
-                : L.t('via_server'))
-            : L.t('no_connection'));
+        ? 'P2P'
+        : (serverRelayMode == ServerRelayMode.open
+            ? L.t('via_server')
+            : L.t('p2p_only_wait'));
     if (mounted) setState(() => connectionMode = mode);
   }
 

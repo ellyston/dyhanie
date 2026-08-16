@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,15 +13,18 @@ import '../services/icon_style_controller.dart';
 import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 import '../services/incoming_call_service.dart';
+import '../services/unread_chats_service.dart';
+
 import 'auto_lock_settings_screen.dart';
 import 'chats_screen.dart';
 import 'contacts_screen.dart';
-import '../services/unread_chats_service.dart';
 import 'profile_screen.dart';
 import 'recovery_phrase_screen.dart';
 import 'settings_screen.dart';
 import 'vpn_screen.dart';
 import 'welcome_screen.dart';
+import 'chat_screen.dart';
+import 'join_room_screen.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -48,6 +52,35 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadProfile();
+  }
+
+  String _newRoomCode() {
+    final r = Random();
+    return List.generate(6, (_) => r.nextInt(10)).join();
+  }
+
+  void _createRoom() {
+    if (username.isEmpty) return;
+    final code = _newRoomCode();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          roomCode: code,
+          username: username,
+        ),
+      ),
+    );
+  }
+
+  void _joinRoom() {
+    if (username.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JoinRoomScreen(username: username),
+      ),
+    );
   }
 
   Future<void> _loadProfile() async {
@@ -241,24 +274,53 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Icon(icon, color: onSurf.withValues(alpha: 0.75), size: 26),
             ),
             if (badge > 0)
-              Positioned(
-                right: -4,
-                top: -4,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  constraints: const BoxConstraints(minWidth: 16),
-                  child: Text(
-                    badge > 99 ? '99+' : '$badge',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 10),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 28,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _roundAction(
+                        icon: AppIcons.chat,
+                        tooltip: L.t('saved_chats'),
+                        badge: chatsBadge,
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  ChatsScreen(myUsername: username),
+                            ),
+                          );
+                          if (mounted) {
+                            setState(() => chatsBadge =
+                                UnreadChatsService.instance.dialogCount);
+                          }
+                        },
+                      ),
+                      const SizedBox(width: 20),
+                      _roundAction(
+                        icon: AppIcons.contacts,
+                        tooltip: L.t('contacts'),
+                        badge: contactsBadge,
+                        onTap: _openContacts,
+                      ),
+                      const SizedBox(width: 20),
+                      _roundAction(
+                        icon: Icons.add_circle_outline,
+                        tooltip: L.t('create_room'),
+                        onTap: _createRoom,
+                      ),
+                      const SizedBox(width: 20),
+                      _roundAction(
+                        icon: Icons.meeting_room_outlined,
+                        tooltip: L.t('join_by_code'),
+                        onTap: _joinRoom,
+                      ),
+                    ],
                   ),
                 ),
-              ),
           ],
         ),
       ),

@@ -81,23 +81,15 @@ class _ChatAppBarState extends State<ChatAppBar>
     super.dispose();
   }
 
-  String _statusLine() {
+  String _subtitleLine() {
     if (widget.otherUser == null) {
       return widget.isDirect
           ? L.t('waiting_peer')
           : '${L.t('room_code')}: ${widget.roomCode}';
     }
-    final online = widget.otherOnline ? L.t('online') : L.t('offline');
-    final mode = widget.connectionMode;
-    // Режим сервера коротко
-    final relay = switch (widget.serverRelayMode) {
-      ServerRelayMode.open => L.t('via_server'),
-      ServerRelayMode.soft => L.t('server_relay_soft'),
-      ServerRelayMode.hard => L.t('server_relay_hard'),
-    };
-    // Не дублируем, если connectionMode уже содержит то же
-    if (mode.isEmpty) return '$online · $relay';
-    return '$online · $mode';
+    final online =
+        widget.otherOnline ? L.t('online') : L.t('offline');
+    return '$online · ${widget.connectionMode}';
   }
 
   Color _statusColor(Color onSurf) {
@@ -193,6 +185,7 @@ class _ChatAppBarState extends State<ChatAppBar>
           : Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // аватары + «дыхание»
                 SizedBox(
                   height: 40,
                   child: Row(
@@ -220,7 +213,8 @@ class _ChatAppBarState extends State<ChatAppBar>
                     ],
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
+                // 1) Имя
                 Text(
                   widget.isDirect
                       ? (widget.otherUser != null
@@ -236,25 +230,12 @@ class _ChatAppBarState extends State<ChatAppBar>
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
+                // 2) Одна строка: онлайн/оффлайн · канал
                 Text(
-                  _statusLine(),
+                  _subtitleLine(),
                   style: FontService.style(
                     fontSize: 12,
-                    fontWeight: FontWeight.w400,
                     color: _statusColor(onSurf),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  widget.otherUser != null
-                      ? '@${widget.otherUser} · ${widget.otherOnline ? L.t('online') : L.t('offline')} · ${widget.connectionMode}'
-                      : (widget.isDirect
-                          ? L.t('waiting_peer')
-                          : '${L.t('room_code')}: ${widget.roomCode}'),
-                  style: FontService.style(
-                    fontSize: 11,
-                    color: onSurf.withValues(alpha: 0.55),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
