@@ -260,6 +260,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     await _startP2P(other);
     await _clearMyIncomingSignal();
+    await _announceInChat(true);
+  }
+
+  Future<void> _announceInChat(bool inside) async {
+    final other = otherUser ?? _otherFromRoomCode();
+    if (other == null) return;
+    try {
+      final api = DyhanieApi.instance;
+      if (!api.isConnected) await api.connect();
+      final me = widget.username.toLowerCase().trim();
+      if (api.boundUsername?.toLowerCase() != me) {
+        await api.sessionBind(me);
+      }
+      await api.signal(
+        room: widget.roomCode,
+        to: other,
+        kind: 'chat_presence',
+        data: {'in': inside},
+      );
+    } catch (_) {}
   }
 
   Future<void> _ensureMic() async {
@@ -312,6 +332,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     IncomingCallService.instance.setChatHandlingRoom(widget.roomCode);
     super.initState();
     _loadChatConfig();
+    _listenChatPresence();
     p2pStatusText = L.t('none');
     connectionMode = L.t('no_connection');
     WidgetsBinding.instance.addObserver(this);
@@ -1233,6 +1254,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _exitRoom() async {
+    await _announceInChat(false);
     await _wipe.leavePresence(
       roomCode: widget.roomCode,
       username: widget.username,
@@ -1285,6 +1307,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
 
       _openIncomingCall(from, offer);
+    });
+  }
+
+  void _listenChatPresence() {
+    DyhanieApi.instance.events.listen((m) {
+      if (m['type']?.toString() != 'signal') return;
+      final p = m['payload'];
+      if (p is! Map) return;
+      if ((p['room']?.toString() ?? '') != widget.roomCode) return;
+      final from = (p['from']?.toString() ?? '').toLowerCase();
+      final me = widget.username.toLowerCase();
+      if (from.isEmpty || from == me) return;
+      if ((p['kind']?.toString() ?? '') != 'chat_presence') return;
+
+      final data = p['data'];
+      final inside = data is Map && data['in'] == true;
+      if (!mounted) return;
+      setState(() => otherOnline = inside);
     });
   }
 
