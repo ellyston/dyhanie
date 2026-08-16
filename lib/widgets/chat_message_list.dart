@@ -7,11 +7,13 @@ import '../services/locale_service.dart';
 import '../services/icon_style_service.dart';
 
 import 'voice_message_bubble.dart';
+import 'video_message_bubble.dart';
 
 class ChatMessageList extends StatelessWidget {
   final List<Map<String, dynamic>> messages;
   final String myUsername;
   final double fontSize;
+  final double mediaScale;
   final bool isSavedChat;
   final int selectedTime;
   final Map<String, int> remaining;
@@ -25,6 +27,7 @@ class ChatMessageList extends StatelessWidget {
     required this.messages,
     required this.myUsername,
     required this.fontSize,
+    this.mediaScale = 1.0,
     required this.isSavedChat,
     required this.selectedTime,
     required this.remaining,
@@ -185,6 +188,15 @@ class ChatMessageList extends StatelessWidget {
                             : 0,
                         onSurf: onSurf,
                         fontSize: fontSize,
+                      ),
+                    ),
+                  if ((msg['msg_type']?.toString() == 'video') &&
+                      (msg['media']?.toString().isNotEmpty ?? false))
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 6 * mediaScale),
+                      child: VideoMessageBubble(
+                        base64Data: msg['media'].toString(),
+                        size: 96 * mediaScale,
                       ),
                     ),
                   if (text.isNotEmpty)

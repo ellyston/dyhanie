@@ -88,6 +88,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool wipeOnExit = false;
 
   double messageFontSize = 16;
+
+  /// 0=XS … 4=XL — масштаб пузырей и шрифта в ленте
+  int messageSizeLevel = 2;
+
+  static const List<double> messageSizeScales = [
+    0.75,
+    0.90,
+    1.00,
+    1.15,
+    1.35,
+  ];
+
+  double get messageSizeScale =>
+      messageSizeScales[messageSizeLevel.clamp(0, 4)];
   Uint8List? backgroundBytes;
   Uint8List? myAvatarBytes;
   Uint8List? otherAvatarBytes;
@@ -172,6 +186,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ServerRelayModeX.fromPrefs(raw, legacyBlock: legacy);
       selectedTime = prefs.getInt('${p}ttl') ?? 0;
       messageFontSize = prefs.getDouble('${p}font') ?? 16.0;
+      messageSizeLevel = prefs.getInt('${p}msg_size') ?? 2;
     });
     _updateConnectionMode();
   }
@@ -184,6 +199,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await prefs.setBool('${p}block_server', serverRelayMode.isBlocked);
     await prefs.setInt('${p}ttl', selectedTime);
     await prefs.setDouble('${p}font', messageFontSize);
+    await prefs.setInt('${p}msg_size', messageSizeLevel);
   }
 
   Future<void> _clearMyIncomingSignal() async {
@@ -718,18 +734,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final body = p['body']?.toString() ?? '';
     String text = body;
     String? image;
+    String? media;
+    String msgType = 'text';
+    int? durationMs;
     String? replyText;
     String? replyUser;
     int ttl = selectedTime;
+
     try {
       if (body.startsWith('{')) {
         final j = jsonDecode(body) as Map<String, dynamic>;
         text = j['text']?.toString() ?? '';
         image = j['image']?.toString();
-
-        final media = j['media']?.toString();
-        final msgType = j['msg_type']?.toString() ?? 'text';
-        final durationMs = j['duration_ms'] is int ? j['duration_ms'] as int : null;
+        media = j['media']?.toString();
+        msgType = j['msg_type']?.toString() ?? 'text';
+        durationMs =
+            j['duration_ms'] is int ? j['duration_ms'] as int : null;
         replyText = j['replyText']?.toString();
         replyUser = j['replyUser']?.toString();
         if (j['ttl'] is int) ttl = j['ttl'] as int;
@@ -748,6 +768,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'replyText': replyText,
       'replyUser': replyUser,
       'image': image,
+      'media': media,
+      'msg_type': msgType,
+      'duration_ms': durationMs,
       'status': 'delivered',
     };
 
@@ -1006,11 +1029,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _onMediaRecordStart(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Запись видео — скоро')),
-        );
-      }
+      await _recordVideoMessage();
       return;
     }
 
@@ -1056,6 +1075,42 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Старт записи: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _recordVideoMessage() async {
+    try {
+      final file = await _picker.pickVideo(
+        source: ImageSource.camera,
+        maxDuration: const Duration(seconds: 20),
+      );
+      if (file == null) return;
+
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return;
+
+      // ~2 МБ — иначе сервер/P2P тяжело
+      if (bytes.length > 2 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(L.t('file_too_big'))),
+          );
+        }
+        return;
+      }
+
+      await _send(
+        mediaB64: base64Encode(bytes),
+        msgType: 'video',
+        durationMs: 0,
+        mime: 'video/mp4',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Видео: $e')),
         );
       }
     }
@@ -1590,6 +1645,42 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
                   const SizedBox(height: 8),
 
+                  const SizedBox(height: 16),
+                  Text(
+                    'Размер сообщений',
+                    style: FontService.style(
+                      color: onSurf.withValues(alpha: 0.7),
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: List.generate(5, (i) {
+                      const labels = ['XS', 'S', 'M', 'L', 'XL'];
+                      final selected = messageSizeLevel == i;
+                      return ChoiceChip(
+                        label: Text(
+                          labels[i],
+                          style: FontService.style(
+                            fontSize: 12,
+                            color: selected ? scheme.surface : onSurf,
+                          ),
+                        ),
+                        selected: selected,
+                        selectedColor: onSurf,
+                        backgroundColor: onSurf.withValues(alpha: 0.08),
+                        onSelected: (_) async {
+                          setM(() => messageSizeLevel = i);
+                          setState(() => messageSizeLevel = i);
+                          await _saveChatConfig();
+                        },
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 8),
+
                   // —— Фон ——
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -1780,7 +1871,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 child: ChatMessageList(
                   messages: list,
                   myUsername: widget.username,
-                  fontSize: messageFontSize,
+                  fontSize: messageFontSize * messageSizeScale,
+                  mediaScale: messageSizeScale,
                   isSavedChat: isSavedChat,
                   selectedTime: selectedTime,
                   remaining: _remaining,
