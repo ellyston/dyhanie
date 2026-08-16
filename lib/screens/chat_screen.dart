@@ -60,6 +60,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? _mediaRecordPath;
   DateTime? _mediaRecordStarted;
   bool _flushingOutbox = false;
+  bool _mediaActuallyRecording = false;
+  bool _micReady = false;
 
   List<Map<String, dynamic>> messages = [];
   final _timers = <String, Timer>{};
@@ -226,7 +228,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-    Future<void> _bootstrapPeer() async {
+  Future<void> _bootstrapPeer() async {
     final other = _otherFromRoomCode();
     if (other == null || other.isEmpty) return;
     if (!mounted) return;
@@ -256,6 +258,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     await _startP2P(other);
     await _clearMyIncomingSignal();
+  }
+
+  Future<void> _ensureMic() async {
+    final s = await Permission.microphone.status;
+    if (s.isGranted) {
+      _micReady = true;
+      return;
+    }
+    final r = await Permission.microphone.request();
+    _micReady = r.isGranted;
+    if (!_micReady && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Нужен доступ к микрофону')),
+      );
+    }
   }
 
   Future<void> _loadOutboxIntoUi(String other) async {
@@ -302,6 +319,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     Future.delayed(const Duration(milliseconds: 300), _loadSavedHistory);
     Future.delayed(const Duration(milliseconds: 200), _bootstrapPeer);
     _listenServerMessages();
+    Future.microtask(_ensureMic);
     _listenIncomingCalls();
     UnreadChatsService.instance.startListening(openRoomCode: widget.roomCode);
     UnreadChatsService.instance.clear(widget.roomCode);
@@ -310,7 +328,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
        .catchError((_) {});
   }
 
-    @override
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _clearMyIncomingSignal();
@@ -867,9 +885,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-    Future<void> _onMediaRecordStart(MediaStripMode mode) async {
+  Future<void> _onMediaRecordStart(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) {
-      // пока только UI-режим; запись видео — следующим шагом
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Запись видео — скоро')),
@@ -878,33 +895,61 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final mic = await Permission.microphone.request();
-    if (!mic.isGranted) {
+    if (!_micReady) {
+      await _ensureMic();
+      if (!_micReady) return;
+      // Право только что выдали — не начинаем запись в этом же жесте
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Нет доступа к микрофону')),
+          const SnackBar(
+            content: Text('Микрофон разрешён. Зажмите полоску ещё раз'),
+          ),
         );
       }
       return;
     }
 
-    final dir = await getTemporaryDirectory();
-    _mediaRecordPath =
-        '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    _mediaRecordStarted = DateTime.now();
+    try {
+      if (await _audioRecorder.isRecording()) {
+        await _audioRecorder.stop();
+      }
 
-    await _audioRecorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.aacLc,
-        bitRate: 64000,
-        sampleRate: 44100,
-      ),
-      path: _mediaRecordPath!,
-    );
+      final dir = await getTemporaryDirectory();
+      final path =
+          '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      await _audioRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 64000,
+          sampleRate: 44100,
+        ),
+        path: path,
+      );
+
+      _mediaRecordPath = path;
+      _mediaRecordStarted = DateTime.now();
+      _mediaActuallyRecording = true;
+    } catch (e) {
+      _mediaActuallyRecording = false;
+      _mediaRecordPath = null;
+      _mediaRecordStarted = null;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Старт записи: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _onMediaRecordEnd(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) return;
+
+    if (!_mediaActuallyRecording) {
+      // Не было start (диалог прав / ошибка) — тихо выходим, без «файл пуст»
+      return;
+    }
+    _mediaActuallyRecording = false;
 
     String? path;
     try {
@@ -915,9 +960,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           SnackBar(content: Text('Стоп записи: $e')),
         );
       }
+      _mediaRecordPath = null;
+      _mediaRecordStarted = null;
       return;
     }
 
+    path ??= _mediaRecordPath;
     final started = _mediaRecordStarted;
     _mediaRecordPath = null;
     _mediaRecordStarted = null;
@@ -939,40 +987,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       try {
         await File(path).delete();
       } catch (_) {}
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Слишком коротко')),
-        );
-      }
-      return;
+      return; // короткое — без пугающего SnackBar
     }
 
     final file = File(path);
-    if (!await file.exists()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Файл не найден')),
-        );
-      }
-      return;
-    }
+    if (!await file.exists()) return;
 
     final bytes = await file.readAsBytes();
     try {
       await file.delete();
     } catch (_) {}
 
-    if (bytes.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Пустые байты')),
-        );
-      }
-      return;
-    }
-
-    if (bytes.length > 500000) {
-      if (mounted) {
+    if (bytes.isEmpty || bytes.length > 500000) {
+      if (mounted && bytes.length > 500000) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(L.t('file_too_big'))),
         );
@@ -980,25 +1007,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
-    try {
-      await _send(
-        mediaB64: base64Encode(bytes),
-        msgType: 'voice',
-        durationMs: ms.clamp(0, 60000),
-        mime: 'audio/m4a',
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Отправка: $e')),
-        );
-      }
-    }
+    await _send(
+      mediaB64: base64Encode(bytes),
+      msgType: 'voice',
+      durationMs: ms.clamp(0, 60000),
+      mime: 'audio/m4a',
+    );
   }
 
   Future<void> _onMediaRecordCancel(MediaStripMode mode) async {
+    _mediaActuallyRecording = false;
     try {
-      await _audioRecorder.stop();
+      if (await _audioRecorder.isRecording()) {
+        await _audioRecorder.stop();
+      }
     } catch (_) {}
     final p = _mediaRecordPath;
     _mediaRecordPath = null;
