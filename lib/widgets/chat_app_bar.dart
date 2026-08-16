@@ -278,78 +278,10 @@ class _ChatAppBarState extends State<ChatAppBar>
           ),
           onPressed: widget.onToggleWipe,
         ),
-        PopupMenuButton<String>(
+        IconButton(
           tooltip: L.t('settings'),
           icon: Icon(Icons.more_vert, color: onSurf.withValues(alpha: 0.9)),
-          color: Theme.of(context).colorScheme.surfaceContainerHigh,
-          onSelected: (value) {
-            switch (value) {
-              case 'search':
-                widget.onToggleSearch();
-                break;
-              case 'server':
-                widget.onToggleServerBlock();
-                break;
-              case 'settings':
-                widget.onSettings();
-                break;
-            }
-          },
-          itemBuilder: (ctx) {
-            final on = Theme.of(ctx).colorScheme.onSurface;
-            return [
-              PopupMenuItem(
-                value: 'search',
-                child: Row(
-                  children: [
-                    Icon(
-                      widget.showSearch ? Icons.close : Icons.search,
-                      color: on.withValues(alpha: 0.85),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      widget.showSearch ? L.t('close') : L.t('search_messages'),
-                      style: FontService.style(color: on),
-                    ),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'server',
-                child: Row(
-                  children: [
-                    _serverRelayIcon(on),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        switch (widget.serverRelayMode) {
-                          ServerRelayMode.open => L.t('server_relay_open'),
-                          ServerRelayMode.soft => L.t('server_relay_soft'),
-                          ServerRelayMode.hard => L.t('server_relay_hard'),
-                        },
-                        style: FontService.style(color: on),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'settings',
-                child: Row(
-                  children: [
-                    Icon(AppIcons.tune,
-                        color: on.withValues(alpha: 0.85), size: 22),
-                    const SizedBox(width: 12),
-                    Text(
-                      L.t('settings'),
-                      style: FontService.style(color: on),
-                    ),
-                  ],
-                ),
-              ),
-            ];
-          },
+          onPressed: widget.onSettings,
         ),
       ],
     );

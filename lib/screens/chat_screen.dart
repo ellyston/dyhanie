@@ -744,7 +744,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
 
-    Future<void> _send({
+  Future<void> _send({
     String? imageB64,
     String? mediaB64,
     String msgType = 'text',
@@ -869,16 +869,59 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       }
     } else if (canServer && !useOutbox) {
-      await _sendViaServer(
-        key: key,
-        other: other!,
-        text: text,
-        imageB64: imageB64,
-        mediaB64: mediaB64,
-        msgType: effectiveType,
-        durationMs: durationMs,
-        mime: mime,
-      );
+      final body = jsonEncode({
+        'text': text,
+        'ttl': selectedTime,
+        'replyText': msg['replyText'],
+        'replyUser': msg['replyUser'],
+        'image': imageB64,
+        'media': mediaB64,
+        'msg_type': mediaB64 != null
+            ? msgType
+            : (imageB64 != null ? 'image' : 'text'),
+        'duration_ms': durationMs,
+        'mime': mime,
+      });
+      final contentType = mediaB64 != null
+          ? msgType
+          : (imageB64 != null ? 'image' : 'text');
+      try {
+        final api = DyhanieApi.instance;
+        if (!api.isConnected) {
+          await api.connect();
+        }
+        final me = widget.username.toLowerCase().trim();
+        if (api.boundUsername?.toLowerCase() != me) {
+          await api.sessionBind(me);
+        }
+        await api.msgSend(
+          room: widget.roomCode,
+          to: other!,
+          msgId: key,
+          body: body,
+          contentType: contentType,
+        );
+        _knownServerKeys.add(key);
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            final i = messages.indexWhere((m) => m['key'] == key);
+            if (i >= 0) messages[i]['status'] = 'error';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Сервер: $e')),
+          );
+        }
+      }
+    }
+
+    if ((canServer || useOutbox) && (other == null || other.isEmpty)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не известен собеседник')),
+        );
+      }
+      return;
     }
 
     await _notifyDirectIncoming();
@@ -1376,17 +1419,83 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         builder: (ctx, setM) {
           return SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    L.t('settings'),
-                    textAlign: TextAlign.center,
-                    style: FontService.style(fontSize: 18, color: onSurf),
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: onSurf.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 16),
+
+                  // —— Поиск ——
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      showSearch ? Icons.close : Icons.search,
+                      color: onSurf.withValues(alpha: 0.75),
+                    ),
+                    title: Text(
+                      showSearch ? L.t('close') : L.t('search_messages'),
+                      style: FontService.style(color: onSurf),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        showSearch = !showSearch;
+                        if (!showSearch) {
+                          searchQuery = '';
+                          _searchCtrl.clear();
+                        }
+                      });
+                    },
+                  ),
+
+                  // —— Режим сервера ——
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      serverRelayMode == ServerRelayMode.open
+                          ? AppIcons.cloud
+                          : AppIcons.cloudOff,
+                      color: serverRelayMode == ServerRelayMode.open
+                          ? onSurf.withValues(alpha: 0.75)
+                          : Colors.redAccent,
+                    ),
+                    title: Text(
+                      switch (serverRelayMode) {
+                        ServerRelayMode.open => L.t('server_relay_open'),
+                        ServerRelayMode.soft => L.t('server_relay_soft'),
+                        ServerRelayMode.hard => L.t('server_relay_hard'),
+                      },
+                      style: FontService.style(color: onSurf),
+                    ),
+                    subtitle: Text(
+                      L.t('via_server'),
+                      style: FontService.style(
+                        color: onSurf.withValues(alpha: 0.45),
+                        fontSize: 12,
+                      ),
+                    ),
+                    onTap: () async {
+                      setM(() => serverRelayMode = serverRelayMode.next);
+                      setState(() {});
+                      _updateConnectionMode();
+                      await _saveChatConfig();
+                    },
+                  ),
+
+                  const Divider(height: 24),
+
+                  // —— Шрифт ——
                   Text(
                     L.t('font_size'),
                     style: FontService.style(
@@ -1406,6 +1515,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     },
                     onChangeEnd: (_) => _saveChatConfig(),
                   ),
+
+                  // —— TTL ——
                   Text(
                     L.t('ttl'),
                     style: FontService.style(
@@ -1438,6 +1549,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       );
                     }).toList(),
                   ),
+
+                  const SizedBox(height: 8),
+
+                  // —— Фон ——
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(AppIcons.image,
@@ -1456,6 +1571,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       }
                     },
                   ),
+
+                  // —— История ——
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(AppIcons.share,
