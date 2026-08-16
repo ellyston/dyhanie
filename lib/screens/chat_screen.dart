@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:video_compress/video_compress.dart';
 
 import '../models/server_relay_mode.dart';
 import '../services/chat_history_service.dart';
@@ -1059,10 +1060,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await _audioRecorder.start(
         const RecordConfig(
           encoder: AudioEncoder.aacLc,
-          bitRate: 64000,
-          sampleRate: 44100,
+          bitRate: 32000,
+          sampleRate: 22050,
         ),
-        path: path,
+        path: _mediaRecordPath!,
       );
 
       _mediaRecordPath = path;
@@ -1084,27 +1085,52 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final file = await _picker.pickVideo(
         source: ImageSource.camera,
-        maxDuration: const Duration(seconds: 20),
+        maxDuration: const Duration(seconds: 10),
       );
       if (file == null) return;
 
-      final bytes = await file.readAsBytes();
-      if (bytes.isEmpty) return;
+      // Сжатие ~360p / LowQuality
+      final info = await VideoCompress.compressVideo(
+        file.path,
+        quality: VideoQuality.LowQuality,
+        deleteOrigin: false,
+        includeAudio: true,
+      );
 
-      // ~2 МБ — иначе сервер/P2P тяжело
-      if (bytes.length > 2 * 1024 * 1024) {
+      final path = info?.path;
+      if (path == null || path.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(L.t('file_too_big'))),
+            const SnackBar(content: Text('Не удалось сжать видео')),
           );
         }
         return;
       }
 
+      final compressed = File(path);
+      final bytes = await compressed.readAsBytes();
+      if (bytes.isEmpty) return;
+
+      if (bytes.length > 4 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${L.t('file_too_big')} (${(bytes.length / 1024 / 1024).toStringAsFixed(1)} MB)',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      final durationMs = info?.duration?.round() ?? 0; // если API даёт Duration
+      // в части версий: info.duration — double в ms → durationMs = info.duration?.toInt()
+
       await _send(
         mediaB64: base64Encode(bytes),
         msgType: 'video',
-        durationMs: 0,
+        durationMs: durationMs is int ? durationMs : 0,
         mime: 'video/mp4',
       );
     } catch (e) {
@@ -1113,9 +1139,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           SnackBar(content: Text('Видео: $e')),
         );
       }
+    } finally {
+      try {
+        await VideoCompress.deleteAllCache();
+      } catch (_) {}
     }
   }
-
+  
   Future<void> _onMediaRecordEnd(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) return;
 

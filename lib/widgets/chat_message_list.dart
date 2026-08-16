@@ -196,6 +196,7 @@ class ChatMessageList extends StatelessWidget {
                       padding: EdgeInsets.only(bottom: 6 * mediaScale),
                       child: VideoMessageBubble(
                         base64Data: msg['media'].toString(),
+                        messageKey: msg['key']?.toString() ?? '$hashCode',
                         size: 96 * mediaScale,
                       ),
                     ),
