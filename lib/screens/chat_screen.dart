@@ -325,6 +325,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     // 3) Только потом P2P
     if (!mounted) return;
+    _startPresencePolling();
     await _startP2P(other);
     await _clearMyIncomingSignal();
     await _announceInChat(true);
@@ -1875,7 +1876,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _startPresencePolling();
+    _stopPresencePolling();
     IncomingCallService.instance.setChatHandlingRoom(null);
     WidgetsBinding.instance.removeObserver(this);
     UnreadChatsService.instance.startListening();
