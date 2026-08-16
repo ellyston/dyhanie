@@ -302,7 +302,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {
       otherUser = other;
-      otherOnline = true;
+      otherOnline = false;
     });
     _updateConnectionMode();
     await _loadAvatars();
@@ -330,8 +330,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _announceInChat(bool inside) async {
-    final other = otherUser ?? _otherFromRoomCode();
-    if (other == null) return;
+    final other = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
+    if (other == null || other.isEmpty) return;
     try {
       final api = DyhanieApi.instance;
       if (!api.isConnected) await api.connect();
@@ -1400,7 +1400,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-    Future<void> _exitRoom() async {
+  Future<void> _exitRoom() async {
+    await _announceInChat(false); 
     await _wipe.leavePresence(
       roomCode: widget.roomCode,
       username: widget.username,
