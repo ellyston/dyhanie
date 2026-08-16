@@ -281,7 +281,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     for (final m in messages) {
       await _persistMediaForMessage(m);
     }
-    await _saveHistory();
+    await _history.save(widget.roomCode, messages);  // сервис истории, не this
   }
 
   Future<void> _notifyDirectIncoming() async {
