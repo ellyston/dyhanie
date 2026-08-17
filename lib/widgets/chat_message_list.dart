@@ -13,7 +13,7 @@ class ChatMessageList extends StatelessWidget {
   final List<Map<String, dynamic>> messages;
   final String myUsername;
   final double fontSize;
-  final double mediaScale;
+  final int videoSizeLevel; // 0=XS … 4=XL — только video
   final bool isSavedChat;
   final int selectedTime;
   final Map<String, int> remaining;
@@ -27,7 +27,7 @@ class ChatMessageList extends StatelessWidget {
     required this.messages,
     required this.myUsername,
     required this.fontSize,
-    this.mediaScale = 1.0,
+    this.videoSizeLevel = 2,
     required this.isSavedChat,
     required this.selectedTime,
     required this.remaining,
@@ -36,6 +36,25 @@ class ChatMessageList extends StatelessWidget {
     required this.onLongPress,
     required this.onSwipeDelete,
   });
+
+  double _videoBubbleSize(BuildContext context) {
+    final half = MediaQuery.sizeOf(context).width * 0.5;
+    const m = 130.0; // бывший XL → новый M
+
+    switch (videoSizeLevel.clamp(0, 4)) {
+      case 0:
+        return m * 0.45; // XS
+      case 1:
+        return m * 0.70; // S
+      case 2:
+        return m; // M
+      case 3:
+        return m + (half - m) * 0.5; // L
+      case 4:
+      default:
+        return half; // XL ≈ половина экрана
+    }
+  }
 
   String _fmtTime(int ts) {
     final d = DateTime.fromMillisecondsSinceEpoch(ts);
@@ -97,8 +116,6 @@ class ChatMessageList extends StatelessWidget {
         final text = msg['text']?.toString() ?? '';
         final isP2P = msg['p2p'] == true;
         final status = msg['status']?.toString() ?? '';
-        final isPending = msg['pending'] == true || status == 'pending';
-        final isError = status == 'error';
         final img = msg['image']?.toString();
         final ts = msg['timestamp'] as int? ?? 0;
 
@@ -171,7 +188,10 @@ class ChatMessageList extends StatelessWidget {
                           width: 200,
                           errorBuilder: (_, __, ___) => Text(
                             L.t('image_load_error'),
-                            style: FontService.style(fontSize: 40, color: onSurf),
+                            style: FontService.style(
+                              fontSize: 40,
+                              color: onSurf,
+                            ),
                           ),
                         ),
                       ),
@@ -193,11 +213,11 @@ class ChatMessageList extends StatelessWidget {
                   if ((msg['msg_type']?.toString() == 'video') &&
                       (msg['media']?.toString().isNotEmpty ?? false))
                     Padding(
-                      padding: EdgeInsets.only(bottom: 6 * mediaScale),
+                      padding: const EdgeInsets.only(bottom: 6),
                       child: VideoMessageBubble(
                         base64Data: msg['media'].toString(),
-                        messageKey: msg['key']?.toString() ?? '$hashCode',
-                        size: 96 * mediaScale,
+                        messageKey: msg['key']?.toString() ?? key,
+                        size: _videoBubbleSize(context),
                       ),
                     ),
                   if (text.isNotEmpty)
@@ -214,23 +234,23 @@ class ChatMessageList extends StatelessWidget {
                     children: [
                       Text(
                         () {
-                          final status = msg['status']?.toString() ?? '';
+                          final st = msg['status']?.toString() ?? '';
                           final pending =
-                              msg['pending'] == true || status == 'pending';
+                              msg['pending'] == true || st == 'pending';
                           if (pending) return L.t('waiting_p2p');
-                          if (status == 'error') return L.t('error');
+                          if (st == 'error') return L.t('error');
                           if (isP2P) return L.t('p2p_connected');
                           return L.t('via_server');
                         }(),
                         style: FontService.style(
                           color: () {
-                            final status = msg['status']?.toString() ?? '';
+                            final st = msg['status']?.toString() ?? '';
                             final pending =
-                                msg['pending'] == true || status == 'pending';
+                                msg['pending'] == true || st == 'pending';
                             if (pending) {
                               return Colors.orangeAccent.withValues(alpha: 0.9);
                             }
-                            if (status == 'error') return Colors.redAccent;
+                            if (st == 'error') return Colors.redAccent;
                             if (isP2P) {
                               return Colors.greenAccent.withValues(alpha: 0.8);
                             }

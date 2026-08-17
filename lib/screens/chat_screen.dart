@@ -2048,8 +2048,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 child: ChatMessageList(
                   messages: list,
                   myUsername: widget.username,
-                  fontSize: messageFontSize * messageSizeScale,
-                  mediaScale: messageSizeScale,
+                  fontSize: messageFontSize,
+                  videoSizeLevel: messageSizeLevel,
                   isSavedChat: isSavedChat,
                   selectedTime: selectedTime,
                   remaining: _remaining,

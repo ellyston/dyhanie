@@ -27,7 +27,7 @@ class _VideoMessageBubbleState extends State<VideoMessageBubble> {
   bool _ready = false;
   bool _playing = false;
 
-  double get _s => widget.size.clamp(56.0, 200.0);
+  double get _s => widget.size.clamp(48.0, 2000.0);
 
   @override
   void dispose() {
