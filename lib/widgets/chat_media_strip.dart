@@ -5,7 +5,8 @@ import 'package:flutter/services.dart';
 
 enum MediaStripMode { voice, video }
 
-/// Под полем ввода: tap = voice↔video, hold = запись.
+/// Над полем ввода: tap = голос↔видео, hold = запись (только голос).
+/// Видео — tap в режиме «Видео» (без удержания таймера 20 с).
 class ChatMediaStrip extends StatefulWidget {
   final void Function(MediaStripMode mode) onRecordStart;
   final void Function(MediaStripMode mode) onRecordEnd;
@@ -30,10 +31,6 @@ class _ChatMediaStripState extends State<ChatMediaStrip> {
   int _elapsedMs = 0;
 
   static const _maxVoiceMs = 60 * 1000;
-  static const _maxVideoMs = 20 * 1000;
-
-  int get _maxMs =>
-      _mode == MediaStripMode.voice ? _maxVoiceMs : _maxVideoMs;
 
   void _toggleMode() {
     if (_recording) return;
@@ -45,35 +42,55 @@ class _ChatMediaStripState extends State<ChatMediaStrip> {
     });
   }
 
+  /// Голос — зажатие; видео — одно нажатие (без полоски 0…20 с).
+  void _onTap() {
+    if (_recording) return;
+    if (_mode == MediaStripMode.video) {
+      HapticFeedback.mediumImpact();
+      widget.onRecordStart(MediaStripMode.video);
+      return;
+    }
+    _toggleMode();
+  }
+
   void _start(LongPressStartDetails _) {
+    if (_mode == MediaStripMode.video) {
+      // видео не через hold — иначе таймер «залипает» на 20 с
+      return;
+    }
     HapticFeedback.mediumImpact();
     setState(() {
       _recording = true;
       _started = DateTime.now();
       _elapsedMs = 0;
     });
-    widget.onRecordStart(_mode);
+    widget.onRecordStart(MediaStripMode.voice);
     _tick?.cancel();
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) {
       if (!_recording || _started == null) return;
       final ms = DateTime.now().difference(_started!).inMilliseconds;
       if (!mounted) return;
       setState(() => _elapsedMs = ms);
-      if (ms >= _maxMs) _stop(send: true);
+      if (ms >= _maxVoiceMs) _stop(send: true);
     });
   }
 
-  void _end(LongPressEndDetails _) => _stop(send: true);
+  void _end(LongPressEndDetails _) {
+    if (_mode == MediaStripMode.video) return;
+    _stop(send: true);
+  }
 
   void _stop({required bool send}) {
     if (!_recording) return;
     _tick?.cancel();
     _tick = null;
-    setState(() => _recording = false);
+    if (mounted) setState(() => _recording = false);
+    _started = null;
+    _elapsedMs = 0;
     if (send) {
-      widget.onRecordEnd(_mode);
+      widget.onRecordEnd(MediaStripMode.voice);
     } else {
-      widget.onRecordCancel(_mode);
+      widget.onRecordCancel(MediaStripMode.voice);
     }
   }
 
@@ -87,20 +104,25 @@ class _ChatMediaStripState extends State<ChatMediaStrip> {
   Widget build(BuildContext context) {
     final onSurf = Theme.of(context).colorScheme.onSurface;
     final sec = (_elapsedMs / 1000).floor();
-    final label = _recording
-        ? (_mode == MediaStripMode.voice
-            ? '🎤 $sec / 60 с'
-            : '🎬 $sec / 20 с')
-        : (_mode == MediaStripMode.voice
-            ? 'Удерживайте — голос · нажатие — видео'
-            : 'Удерживайте — видео · нажатие — голос');
+
+    final String label;
+    if (_recording) {
+      label = 'Голос · $sec / 60 с';
+    } else if (_mode == MediaStripMode.voice) {
+      label = 'Голос';
+    } else {
+      label = 'Видео';
+    }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
       child: GestureDetector(
-        onTap: _toggleMode,
+        onTap: _onTap,
         onLongPressStart: _start,
         onLongPressEnd: _end,
+        onLongPressCancel: () {
+          if (_recording) _stop(send: false);
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           height: 36,
@@ -121,8 +143,9 @@ class _ChatMediaStripState extends State<ChatMediaStrip> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 12,
-              color: onSurf.withValues(alpha: _recording ? 0.95 : 0.55),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: onSurf.withValues(alpha: _recording ? 0.95 : 0.7),
             ),
           ),
         ),

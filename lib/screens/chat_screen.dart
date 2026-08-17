@@ -1793,36 +1793,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
                   // —— TTL ——
                   Text(
-                    L.t('ttl'),
+                    selectedTime <= 0
+                        ? 'Время жизни: не исчезать'
+                        : 'Время жизни: ${selectedTime ~/ 60} м ${selectedTime % 60} с',
                     style: FontService.style(
                       color: onSurf.withValues(alpha: 0.7),
                       fontSize: 13,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: timeOptions.map((sec) {
-                      final selected = selectedTime == sec;
-                      return ChoiceChip(
-                        label: Text(
-                          _ttlLabel(sec),
-                          style: FontService.style(
-                            fontSize: 12,
-                            color: selected ? scheme.surface : onSurf,
-                          ),
-                        ),
-                        selected: selected,
-                        selectedColor: onSurf,
-                        backgroundColor: onSurf.withValues(alpha: 0.08),
-                        onSelected: (_) async {
-                          setM(() => selectedTime = sec);
-                          setState(() => selectedTime = sec);
-                          await _saveChatConfig();
-                        },
-                      );
-                    }).toList(),
+                  Slider(
+                    value: selectedTime.clamp(0, 600).toDouble(),
+                    min: 0,
+                    max: 600, // 10 минут
+                    divisions: 60, // шаг 10 с
+                    label: selectedTime <= 0
+                        ? '∞'
+                        : (selectedTime < 60
+                            ? '$selectedTime с'
+                            : '${selectedTime ~/ 60}:${(selectedTime % 60).toString().padLeft(2, '0')}'),
+                    onChanged: (v) {
+                      final t = v.round();
+                      setM(() => selectedTime = t);
+                      setState(() => selectedTime = t);
+                    },
+                    onChangeEnd: (_) => _saveChatConfig(),
                   ),
 
                   const SizedBox(height: 8),
@@ -2082,6 +2076,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  ChatMediaStrip(
+                    onRecordStart: _onMediaRecordStart,
+                    onRecordEnd: _onMediaRecordEnd,
+                    onRecordCancel: _onMediaRecordCancel,
+                  ),
                   ChatInputBar(
                     controller: _controller,
                     p2pConnected: p2pConnected,
@@ -2091,11 +2090,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     onEmoji: _openEmoji,
                     onSend: () => _send(),
                     onClearReply: () => setState(() => replyTo = null),
-                  ),
-                  ChatMediaStrip(
-                    onRecordStart: _onMediaRecordStart,
-                    onRecordEnd: _onMediaRecordEnd,
-                    onRecordCancel: _onMediaRecordCancel,
                   ),
                 ],
               ),
