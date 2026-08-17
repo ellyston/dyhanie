@@ -70,6 +70,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _timers = <String, Timer>{};
   final _remaining = <String, int>{};
   final _knownServerKeys = <String>{};
+  final _delivering = <String>{};
 
   StreamSubscription? _p2pMsgSub;
   StreamSubscription? _p2pStatusSub;
@@ -238,6 +239,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
       _scrollEnd();
     } catch (_) {}
+    for (final m in messages) {
+      if (m['status'] == 'pending' &&
+          (m['msg_type'] == 'voice' || m['msg_type'] == 'video')) {
+        unawaited(_deliverWithRetry(m));
+      }
+    }
   }
 
   /// base64 → файл на диске; в msg пишем media_path
@@ -898,7 +905,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
 
-  Future<void> _send({
+    Future<void> _send({
     String? imageB64,
     String? mediaB64,
     String msgType = 'text',
@@ -915,51 +922,36 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         (serverRelayMode == ServerRelayMode.hard ||
             serverRelayMode == ServerRelayMode.soft);
 
-    if (!canP2P && !canServer && !useOutbox) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Нет канала отправки')),
-        );
-      }
-      return;
-    }
-
-    if ((canServer || useOutbox) && (other == null || other.isEmpty)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не известен собеседник (other)')),
-        );
-      }
-      return;
-    }
+    // Нет канала сейчас — всё равно кладём локально и ретраим (для media/text)
+    final noChannelNow = !canP2P && !canServer && !useOutbox;
+    final noOtherForServer =
+        (canServer || useOutbox) && (other == null || other.isEmpty);
 
     final ts = DateTime.now().millisecondsSinceEpoch;
-    late String key;
-    late String status;
-
-    if (canP2P) {
-      key = 'p2p_$ts';
-      status = 'sent';
-    } else if (useOutbox) {
-      final ob = await _outbox.add(
-        from: widget.username,
-        to: other!,
-        text: text,
-        ttl: selectedTime,
-        image: imageB64 ?? mediaB64,
-        replyText: replyTo?['text']?.toString(),
-        replyUser: replyTo?['username']?.toString(),
-      );
-      key = ob.id;
-      status = 'pending';
-    } else {
-      key = 'srv_$ts';
-      status = 'sent';
-    }
+    final key = canP2P
+        ? 'p2p_$ts'
+        : (useOutbox ? 'ob_$ts' : 'srv_$ts');
 
     final effectiveType = mediaB64 != null
         ? msgType
         : (imageB64 != null ? 'image' : 'text');
+
+    // outbox (hard/soft без P2P) — как раньше
+    if (useOutbox && other != null && other.isNotEmpty) {
+      try {
+        final ob = await _outbox.add(
+          from: widget.username,
+          to: other,
+          text: text,
+          ttl: selectedTime,
+          image: imageB64 ?? mediaB64,
+          replyText: replyTo?['text']?.toString(),
+          replyUser: replyTo?['username']?.toString(),
+        );
+        // key можно заменить на ob.id, если outbox так устроен
+        // key = ob.id;
+      } catch (_) {}
+    }
 
     final msg = <String, dynamic>{
       'key': key,
@@ -968,7 +960,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'timestamp': ts,
       'ttl': selectedTime,
       'p2p': canP2P,
-      'pending': status == 'pending',
+      'pending': true,
       'replyText': replyTo?['text'],
       'replyUser': replyTo?['username'],
       'image': imageB64,
@@ -976,15 +968,95 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'msg_type': effectiveType,
       'duration_ms': durationMs,
       'mime': mime,
-      'status': status,
+      'status': 'pending',
     };
 
-    setState(() {
-      messages = [...messages, msg];
-      replyTo = null;
-    });
+    // 1) UI
+    if (mounted) {
+      setState(() {
+        messages = [...messages, msg];
+        replyTo = null;
+      });
+    }
     if (!isSavedChat && selectedTime > 0) _startTimer(msg);
     _scrollEnd();
+
+    // 2) Локальный кэш (до сети)
+    await _persistMediaForMessage(msg);
+    if (!wipeOnExit) {
+      await _saveHistory();
+    }
+
+    _controller.clear();
+    HapticFeedback.lightImpact();
+
+    // 3) Доставка в фоне, без SnackBar об ошибке
+    if (noChannelNow || (canServer && noOtherForServer && !canP2P)) {
+      // некому/некуда — остаётся pending, retry сам выйдет когда появится канал
+      debugPrint('send: no channel/other yet, pending $key');
+    }
+    unawaited(_deliverWithRetry(msg));
+    unawaited(_notifyDirectIncoming());
+  }
+
+  Future<void> _deliverWithRetry(Map<String, dynamic> msg) async {
+    final key = msg['key']?.toString() ?? '';
+    if (key.isEmpty) return;
+    if (_delivering.contains(key)) return;
+    _delivering.add(key);
+
+    const maxAttempts = 40;
+    const gap = Duration(seconds: 3);
+
+    try {
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
+        if (!mounted) return;
+
+        final ok = await _tryDeliverOnce(msg);
+        if (ok) {
+          if (!mounted) return;
+          setState(() {
+            final i = messages.indexWhere((m) => m['key'] == key);
+            if (i >= 0) {
+              messages[i]['status'] = 'sent';
+              messages[i]['pending'] = false;
+            }
+          });
+          if (!wipeOnExit) await _saveHistory();
+          return;
+        }
+        await Future<void>.delayed(gap);
+      }
+      debugPrint('deliver give up $key');
+    } finally {
+      _delivering.remove(key);
+    }
+  }
+
+  Future<bool> _tryDeliverOnce(Map<String, dynamic> msg) async {
+    final key = msg['key']?.toString() ?? '';
+    final text = msg['text']?.toString() ?? '';
+    final imageB64 = msg['image']?.toString();
+    final mediaB64 = msg['media']?.toString();
+    final msgType = msg['msg_type']?.toString() ?? 'text';
+    final durationMs =
+        msg['duration_ms'] is int ? msg['duration_ms'] as int : null;
+    final mime = msg['mime']?.toString();
+    final ts = msg['timestamp'] as int? ??
+        DateTime.now().millisecondsSinceEpoch;
+    final ttl = msg['ttl'] is int ? msg['ttl'] as int : selectedTime;
+    final other = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
+
+    final canP2P = p2pConnected && _p2p != null && _p2p!.isOpen;
+    final canServer = serverRelayMode == ServerRelayMode.open;
+
+    if (!canP2P && !canServer) return false;
+    if (canServer && (other == null || other.isEmpty) && !canP2P) {
+      return false;
+    }
+
+    var p2pOk = false;
+    var serverOk = false;
 
     if (canP2P) {
       try {
@@ -993,97 +1065,63 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           'key': key,
           'text': text,
           'timestamp': ts,
-          'ttl': selectedTime,
+          'ttl': ttl,
           'replyText': msg['replyText'],
           'replyUser': msg['replyUser'],
           'image': imageB64,
           'media': mediaB64,
-          'msg_type': effectiveType,
+          'msg_type': msgType,
           'duration_ms': durationMs,
           'mime': mime,
         }));
-      } catch (e) {
-        // fallback на сервер, если open
-        if (canServer && other != null) {
-          await _sendViaServer(
-            key: key,
-            other: other,
-            text: text,
-            imageB64: imageB64,
-            mediaB64: mediaB64,
-            msgType: effectiveType,
-            durationMs: durationMs,
-            mime: mime,
-          );
-        } else if (mounted) {
-          setState(() {
-            final i = messages.indexWhere((m) => m['key'] == key);
-            if (i >= 0) messages[i]['status'] = 'error';
-          });
-        }
+        p2pOk = true;
+      } catch (_) {
+        p2pOk = false;
       }
-    } else if (canServer && !useOutbox) {
-      final body = jsonEncode({
-        'text': text,
-        'ttl': selectedTime,
-        'replyText': msg['replyText'],
-        'replyUser': msg['replyUser'],
-        'image': imageB64,
-        'media': mediaB64,
-        'msg_type': mediaB64 != null
-            ? msgType
-            : (imageB64 != null ? 'image' : 'text'),
-        'duration_ms': durationMs,
-        'mime': mime,
-      });
-      final contentType = mediaB64 != null
-          ? msgType
-          : (imageB64 != null ? 'image' : 'text');
+    }
+
+    if (canServer && other != null && other.isNotEmpty) {
       try {
+        final body = jsonEncode({
+          'text': text,
+          'ttl': ttl,
+          'replyText': msg['replyText'],
+          'replyUser': msg['replyUser'],
+          'image': imageB64,
+          'media': mediaB64,
+          'msg_type': msgType,
+          'duration_ms': durationMs,
+          'mime': mime,
+        });
+        final contentType = mediaB64 != null && mediaB64.isNotEmpty
+            ? msgType
+            : (imageB64 != null ? 'image' : 'text');
+
         final api = DyhanieApi.instance;
-        if (!api.isConnected) {
-          await api.connect();
-        }
+        if (!api.isConnected) await api.connect();
         final me = widget.username.toLowerCase().trim();
         if (api.boundUsername?.toLowerCase() != me) {
           await api.sessionBind(me);
         }
         await api.msgSend(
           room: widget.roomCode,
-          to: other!,
+          to: other,
           msgId: key,
           body: body,
           contentType: contentType,
         );
         _knownServerKeys.add(key);
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            final i = messages.indexWhere((m) => m['key'] == key);
-            if (i >= 0) messages[i]['status'] = 'error';
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Сервер: $e')),
-          );
-        }
+        serverOk = true;
+      } catch (_) {
+        serverOk = false;
       }
     }
 
-    if ((canServer || useOutbox) && (other == null || other.isEmpty)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не известен собеседник')),
-        );
-      }
-      return;
-    }
-
-    await _notifyDirectIncoming();
-    _controller.clear();
-    HapticFeedback.lightImpact();
-    if (!wipeOnExit) {
-      await _saveHistory();
-    }
+    // Успех: хотя бы один доступный канал
+    if (canP2P && canServer) return p2pOk || serverOk;
+    if (canP2P) return p2pOk;
+    if (canServer) return serverOk;
+    return false;
   }
 
   Future<void> _sendViaServer({
