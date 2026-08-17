@@ -1174,7 +1174,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           bitRate: 32000,
           sampleRate: 22050,
         ),
-        path: _mediaRecordPath!,
+        path: path, // ← не _mediaRecordPath!
       );
 
       _mediaRecordPath = path;
