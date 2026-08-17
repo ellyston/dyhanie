@@ -26,6 +26,8 @@ import '../services/incoming_call_service.dart';
 import '../services/outbox_service.dart';
 import '../services/contact_invite_service.dart';
 import '../services/media_message_cache.dart';
+import '../services/media_chunk_codec.dart';
+import '../services/media_chunk_assembler.dart';
 
 import '../widgets/chat_app_bar.dart';
 import '../widgets/chat_input_bar.dart';
@@ -704,6 +706,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       try {
         if (raw.startsWith('{')) {
           final data = jsonDecode(raw) as Map<String, dynamic>;
+
           if (data['type'] == 'clear_chat') {
             for (final t in _timers.values) {
               t.cancel();
@@ -717,6 +720,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _removeLocal(data['key']?.toString() ?? '');
             return;
           }
+
+          // ----- чанки media -----
+          if (data['type'] == 'media_chunk') {
+            unawaited(_handleIncomingMediaChunk(data, other, viaP2p: true));
+            return;
+          }
+
           if (data['type'] == 'msg') {
             _addIncomingP2P(data, other);
             return;
@@ -758,6 +768,47 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     SystemSound.play(SystemSoundType.click);
     _scrollEnd();
     _clearMyIncomingSignal();
+  }
+
+  Future<void> _handleIncomingMediaChunk(
+    Map data,
+    String other, {
+    required bool viaP2p,
+  }) async {
+    final map = Map<String, dynamic>.from(data);
+    if ((map['from']?.toString() ?? '').isEmpty) {
+      map['from'] = other;
+    }
+
+    final done = MediaChunkAssembler.instance.add(map);
+    if (done == null) return; // ещё не все куски
+
+    final key = done['key']?.toString() ?? '';
+    if (key.isEmpty) return;
+    if (_knownServerKeys.contains(key)) return;
+    if (messages.any((m) => m['key']?.toString() == key)) return;
+
+    done['username'] =
+        (done['username']?.toString().isNotEmpty ?? false)
+            ? done['username']
+            : other;
+    done['p2p'] = viaP2p;
+    done['status'] = 'delivered';
+
+    _knownServerKeys.add(key);
+    await _persistMediaForMessage(done);
+
+    if (!mounted) return;
+    setState(() => messages = [...messages, done]);
+
+    final ttl = done['ttl'] is int ? done['ttl'] as int : 0;
+    if (!isSavedChat && ttl > 0) _startTimer(done);
+
+    HapticFeedback.mediumImpact();
+    _scrollEnd();
+    _clearMyIncomingSignal();
+
+    if (!wipeOnExit) await _saveHistory();
   }
 
   void _startTimer(Map<String, dynamic> msg) {
@@ -826,7 +877,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
 
-  Future<void> _ingestServerMsg(Map p) async {
+    Future<void> _ingestServerMsg(Map p) async {
     if (blockServerMessages) return;
 
     final msgId = p['msg_id']?.toString() ?? '';
@@ -844,6 +895,45 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (from.isEmpty || from == widget.username) return;
 
     final body = p['body']?.toString() ?? '';
+    final contentType = p['content_type']?.toString() ?? 'text';
+
+    // ----- media_chunk: сборка, без пузыря на каждый кусок -----
+    if (contentType == 'media_chunk' ||
+        (body.startsWith('{') && body.contains('"media_chunk"'))) {
+      try {
+        final j = jsonDecode(body) as Map<String, dynamic>;
+        if (j['type']?.toString() == 'media_chunk') {
+          j['from'] = from;
+          final done =
+              MediaChunkAssembler.instance.add(Map<String, dynamic>.from(j));
+
+          DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
+
+          if (done != null) {
+            if ((done['username']?.toString() ?? '').isEmpty) {
+              done['username'] = from;
+            }
+            final doneKey = done['key']?.toString() ?? msgId;
+            if (_knownServerKeys.contains(doneKey)) return;
+            _knownServerKeys.add(doneKey);
+
+            await _persistMediaForMessage(done);
+            if (!mounted) return;
+            setState(() => messages = [...messages, done]);
+            final ttl = done['ttl'] is int ? done['ttl'] as int : 0;
+            if (!isSavedChat && ttl > 0) _startTimer(done);
+            _scrollEnd();
+            UnreadChatsService.instance.clear(widget.roomCode);
+            if (!wipeOnExit) await _saveHistory();
+          }
+          return;
+        }
+      } catch (_) {
+        // не chunk — ниже обычный разбор
+      }
+    }
+
+    // ----- обычное сообщение -----
     String text = body;
     String? image;
     String? media;
@@ -856,6 +946,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       if (body.startsWith('{')) {
         final j = jsonDecode(body) as Map<String, dynamic>;
+        if (j['type']?.toString() == 'media_chunk') {
+          // на всякий случай
+          return;
+        }
         text = j['text']?.toString() ?? '';
         image = j['image']?.toString();
         media = j['media']?.toString();
@@ -888,7 +982,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     _knownServerKeys.add(msgId);
 
-    // кэш на диск (и sent, и received)
     await _persistMediaForMessage(msg);
 
     if (!mounted) return;
@@ -904,8 +997,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-
-    Future<void> _send({
+  Future<void> _send({
     String? imageB64,
     String? mediaB64,
     String msgType = 'text',
@@ -1055,6 +1147,55 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return false;
     }
 
+    // --- тяжёлое media: чанки ---
+    final heavy = mediaB64 != null &&
+        mediaB64.isNotEmpty &&
+        (msgType == 'voice' ||
+            msgType == 'video' ||
+            msgType == 'image' ||
+            imageB64 == null);
+
+    if (heavy) {
+      return _deliverChunked(
+        mediaId: key,
+        mediaB64: mediaB64!,
+        msgType: msgType,
+        mime: mime,
+        durationMs: durationMs,
+        ttl: ttl,
+        replyText: msg['replyText']?.toString(),
+        replyUser: msg['replyUser']?.toString(),
+        canP2P: canP2P,
+        canServer: canServer,
+        other: other,
+      );
+    }
+
+    // картинка без msg_type video/voice — тоже чанками, если большая
+    if (imageB64 != null && imageB64.isNotEmpty) {
+      try {
+        final raw = base64Decode(
+          imageB64.contains(',') ? imageB64.split(',').last : imageB64,
+        );
+        if (MediaChunkCodec.needsChunking(Uint8List.fromList(raw))) {
+          return _deliverChunked(
+            mediaId: key,
+            mediaB64: imageB64,
+            msgType: 'image',
+            mime: mime ?? 'image/jpeg',
+            durationMs: null,
+            ttl: ttl,
+            replyText: msg['replyText']?.toString(),
+            replyUser: msg['replyUser']?.toString(),
+            canP2P: canP2P,
+            canServer: canServer,
+            other: other,
+          );
+        }
+      } catch (_) {}
+    }
+
+    // --- лёгкое: текст / мелкая картинка одним пакетом ---
     var p2pOk = false;
     var serverOk = false;
 
@@ -1117,11 +1258,172 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     }
 
-    // Успех: хотя бы один доступный канал
     if (canP2P && canServer) return p2pOk || serverOk;
     if (canP2P) return p2pOk;
     if (canServer) return serverOk;
     return false;
+  }
+
+  Future<bool> _deliverChunked({
+    required String mediaId,
+    required String mediaB64,
+    required String msgType,
+    String? mime,
+    int? durationMs,
+    required int ttl,
+    String? replyText,
+    String? replyUser,
+    required bool canP2P,
+    required bool canServer,
+    String? other,
+  }) async {
+    late Uint8List bytes;
+    try {
+      final clean =
+          mediaB64.contains(',') ? mediaB64.split(',').last.trim() : mediaB64;
+      bytes = Uint8List.fromList(base64Decode(clean));
+    } catch (_) {
+      return false;
+    }
+    if (bytes.isEmpty) return false;
+
+    final parts = MediaChunkCodec.needsChunking(bytes)
+        ? MediaChunkCodec.splitBase64(bytes)
+        : [base64Encode(bytes)];
+    final total = parts.length;
+
+    var anyOk = false;
+    var allOk = true;
+
+    for (var i = 0; i < total; i++) {
+      final env = MediaChunkCodec.envelope(
+        mediaId: mediaId,
+        index: i,
+        total: total,
+        msgType: msgType,
+        dataB64: parts[i],
+        mime: mime,
+        durationMs: durationMs,
+        ttl: ttl,
+        from: widget.username,
+        replyText: replyText,
+        replyUser: replyUser,
+      );
+
+      var chunkOk = false;
+
+      if (canP2P) {
+        try {
+          _p2p!.send(jsonEncode(env));
+          chunkOk = true;
+        } catch (_) {}
+      }
+
+      if (canServer && other != null && other.isNotEmpty) {
+        try {
+          final api = DyhanieApi.instance;
+          if (!api.isConnected) await api.connect();
+          final me = widget.username.toLowerCase().trim();
+          if (api.boundUsername?.toLowerCase() != me) {
+            await api.sessionBind(me);
+          }
+          await api.msgSend(
+            room: widget.roomCode,
+            to: other,
+            msgId: '${mediaId}_$i',
+            body: jsonEncode(env),
+            contentType: 'media_chunk',
+          );
+          chunkOk = true;
+        } catch (_) {}
+      }
+
+      if (chunkOk) {
+        anyOk = true;
+      } else {
+        allOk = false;
+      }
+    }
+
+    // успех попытки: все куски ушли хотя бы одним каналом
+    return allOk && anyOk;
+  }
+
+  Future<bool> _deliverMediaBytes({
+    required String mediaId,
+    required Uint8List bytes,
+    required String msgType,
+    String? mime,
+    int? durationMs,
+    required int ttl,
+    String? replyText,
+    String? replyUser,
+  }) async {
+    final other = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
+    final canP2P = p2pConnected && _p2p != null && _p2p!.isOpen;
+    final canServer = serverRelayMode == ServerRelayMode.open &&
+        other != null &&
+        other.isNotEmpty;
+
+    if (!canP2P && !canServer) return false;
+
+    final parts = MediaChunkCodec.needsChunking(bytes)
+        ? MediaChunkCodec.splitBase64(bytes)
+        : [base64Encode(bytes)];
+
+    final total = parts.length;
+    var allOk = true;
+
+    for (var i = 0; i < total; i++) {
+      final env = MediaChunkCodec.envelope(
+        mediaId: mediaId,
+        index: i,
+        total: total,
+        msgType: msgType,
+        dataB64: parts[i],
+        mime: mime,
+        durationMs: durationMs,
+        ttl: ttl,
+        from: widget.username,
+        replyText: replyText,
+        replyUser: replyUser,
+      );
+      // один кусок без нарезки — можно слать type: msg со старым форматом;
+      // для единообразия всегда media_chunk с total==1
+
+      var ok = false;
+
+      if (canP2P) {
+        try {
+          _p2p!.send(jsonEncode(env));
+          ok = true;
+        } catch (_) {}
+      }
+
+      if (canServer) {
+        try {
+          final api = DyhanieApi.instance;
+          if (!api.isConnected) await api.connect();
+          final me = widget.username.toLowerCase().trim();
+          if (api.boundUsername?.toLowerCase() != me) {
+            await api.sessionBind(me);
+          }
+          final chunkId = '${mediaId}_$i';
+          await api.msgSend(
+            room: widget.roomCode,
+            to: other!,
+            msgId: chunkId, // уникальный на кусок
+            body: jsonEncode(env),
+            contentType: 'media_chunk',
+          );
+          ok = true;
+        } catch (_) {}
+      }
+
+      if (!ok) allOk = false;
+      // можно break и retry с index i
+    }
+    return allOk;
   }
 
   Future<void> _sendViaServer({
