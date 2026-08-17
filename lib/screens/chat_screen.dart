@@ -11,7 +11,6 @@ import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_compress/video_compress.dart';
 
-import '../models/server_relay_mode.dart';
 import '../services/chat_history_service.dart';
 import '../services/chat_wipe_service.dart';
 import '../services/dialog_signal_service.dart';
@@ -86,8 +85,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool p2pConnected = false;
   String p2pStatusText = '';
   String connectionMode = '';
-
-  ServerRelayMode serverRelayMode = ServerRelayMode.open;
 
   bool get blockServerMessages => TransportModeService.instance.isP2p;
 
@@ -189,7 +186,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final raw = prefs.getString('${p}server_relay');
     setState(() {
       wipeOnExit = prefs.getBool('${p}wipe') ?? false;
-      // serverRelayMode больше не из prefs чата
+      
       selectedTime = prefs.getInt('${p}ttl') ?? 0;
       messageFontSize = prefs.getDouble('${p}font') ?? 16.0;
       messageSizeLevel = prefs.getInt('${p}msg_size') ?? 2;
@@ -1314,136 +1311,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return allOk && anyOk;
   }
 
-  Future<bool> _deliverMediaBytes({
-    required String mediaId,
-    required Uint8List bytes,
-    required String msgType,
-    String? mime,
-    int? durationMs,
-    required int ttl,
-    String? replyText,
-    String? replyUser,
-  }) async {
-    final other = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
-    final canP2P = p2pConnected && _p2p != null && _p2p!.isOpen;
-    final canServer = serverRelayMode == ServerRelayMode.open &&
-        other != null &&
-        other.isNotEmpty;
-
-    if (!canP2P && !canServer) return false;
-
-    final parts = MediaChunkCodec.needsChunking(bytes)
-        ? MediaChunkCodec.splitBase64(bytes)
-        : [base64Encode(bytes)];
-
-    final total = parts.length;
-    var allOk = true;
-
-    for (var i = 0; i < total; i++) {
-      final env = MediaChunkCodec.envelope(
-        mediaId: mediaId,
-        index: i,
-        total: total,
-        msgType: msgType,
-        dataB64: parts[i],
-        mime: mime,
-        durationMs: durationMs,
-        ttl: ttl,
-        from: widget.username,
-        replyText: replyText,
-        replyUser: replyUser,
-      );
-      // один кусок без нарезки — можно слать type: msg со старым форматом;
-      // для единообразия всегда media_chunk с total==1
-
-      var ok = false;
-
-      if (canP2P) {
-        try {
-          _p2p!.send(jsonEncode(env));
-          ok = true;
-        } catch (_) {}
-      }
-
-      if (canServer) {
-        try {
-          final api = DyhanieApi.instance;
-          if (!api.isConnected) await api.connect();
-          final me = widget.username.toLowerCase().trim();
-          if (api.boundUsername?.toLowerCase() != me) {
-            await api.sessionBind(me);
-          }
-          final chunkId = '${mediaId}_$i';
-          await api.msgSend(
-            room: widget.roomCode,
-            to: other!,
-            msgId: chunkId, // уникальный на кусок
-            body: jsonEncode(env),
-            contentType: 'media_chunk',
-          );
-          ok = true;
-        } catch (_) {}
-      }
-
-      if (!ok) allOk = false;
-      // можно break и retry с index i
-    }
-    return allOk;
-  }
-
-  Future<void> _sendViaServer({
-    required String key,
-    required String other,
-    required String text,
-    String? imageB64,
-    String? mediaB64,
-    required String msgType,
-    int? durationMs,
-    String? mime,
-  }) async {
-    final body = jsonEncode({
-      'text': text,
-      'ttl': selectedTime,
-      'replyText': replyTo?['text'],
-      'replyUser': replyTo?['username'],
-      'image': imageB64,
-      'media': mediaB64,
-      'msg_type': msgType,
-      'duration_ms': durationMs,
-      'mime': mime,
-    });
-
-    try {
-      final api = DyhanieApi.instance;
-      if (!api.isConnected) {
-        await api.connect();
-      }
-      final me = widget.username.toLowerCase().trim();
-      if (api.boundUsername?.toLowerCase() != me) {
-        await api.sessionBind(me);
-      }
-
-      await api.msgSend(
-        room: widget.roomCode,
-        to: other,
-        msgId: key,
-        body: body,
-        contentType: msgType,
-      );
-      _knownServerKeys.add(key);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          final i = messages.indexWhere((m) => m['key'] == key);
-          if (i >= 0) messages[i]['status'] = 'error';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Сервер: $e')),
-        );
-      }
-    }
-  }
-
   Future<void> _onMediaRecordStart(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) {
       await _recordVideoMessage();
@@ -2186,7 +2053,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: ChatAppBar(
-            serverRelayMode: serverRelayMode,
             blockServerMessages: blockServerMessages,
             showSearch: showSearch,
             searchController: _searchCtrl,
@@ -2209,7 +2075,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             }),
             onSearchChanged: (v) => setState(() => searchQuery = v.trim()),
             onToggleServerBlock: () async {
-              setState(() => serverRelayMode = serverRelayMode.next);
               _updateConnectionMode();
               await _saveChatConfig();
             },

@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../models/server_relay_mode.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/icon_style_service.dart';
@@ -17,7 +16,6 @@ class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
   final bool otherOnline;
   final String connectionMode;
   final bool blockServerMessages;
-  final ServerRelayMode serverRelayMode;
   final bool wipeOnExit;
   final String myUsername;
   final Uint8List? myAvatarBytes;
@@ -41,7 +39,6 @@ class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.otherOnline,
     required this.connectionMode,
     required this.blockServerMessages,
-    required this.serverRelayMode,
     required this.wipeOnExit,
     required this.myUsername,
     required this.myAvatarBytes,
@@ -96,12 +93,6 @@ class _ChatAppBarState extends State<ChatAppBar>
     if (widget.otherOnline) {
       return Colors.greenAccent.withValues(alpha: 0.9);
     }
-    if (widget.serverRelayMode == ServerRelayMode.hard) {
-      return Colors.redAccent.withValues(alpha: 0.9);
-    }
-    if (widget.serverRelayMode == ServerRelayMode.soft) {
-      return Colors.orangeAccent.withValues(alpha: 0.9);
-    }
     return onSurf.withValues(alpha: 0.7);
   }
 
@@ -134,26 +125,6 @@ class _ChatAppBarState extends State<ChatAppBar>
               ),
       ),
     );
-  }
-
-  Widget _serverRelayIcon(Color onSurf) {
-    switch (widget.serverRelayMode) {
-      case ServerRelayMode.open:
-        return Icon(
-          AppIcons.cloud,
-          color: onSurf.withValues(alpha: 0.75),
-        );
-      case ServerRelayMode.soft:
-        return Icon(AppIcons.cloudOff, color: Colors.redAccent);
-      case ServerRelayMode.hard:
-        return  Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(AppIcons.cloudOff, color: Colors.redAccent),
-            Icon(AppIcons.close, size: 16, color: Colors.redAccent),
-          ],
-        );
-    }
   }
 
   @override
