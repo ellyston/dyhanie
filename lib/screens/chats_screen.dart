@@ -10,7 +10,6 @@ import '../services/dialog_signal_service.dart';
 import '../services/font_service.dart';
 import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
-import '../services/outbox_service.dart';
 import '../services/unread_chats_service.dart';
 import '../services/dyhanie_api.dart';
 import '../services/avatar_cache.dart';
@@ -32,7 +31,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
   static const _prefsNotes = 'chats_notes';
 
   final _signals = DialogSignalService();
-  final _outbox = OutboxService();
   final _history = ChatHistoryService();
 
   final Map<String, _ChatItem> items = {};
@@ -162,8 +160,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
     await UnreadChatsService.instance.load();
     await _loadMeta();
     await _loadSaved();
-    await _loadLocalPending();
-    // ещё раз пройтись по всем
     for (final e in items.entries) {
       if (e.value.otherUser.isNotEmpty) {
         _ensureAvatar(e.value.otherUser, e.key);
@@ -226,32 +222,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
       }
     }
 
-  }
-
-  Future<void> _loadLocalPending() async {
-    final ids = await _outbox.dialogIdsWithPending(widget.myUsername);
-    for (final id in ids) {
-      final other = _otherFromDialogId(id, widget.myUsername);
-      if (other == null) continue;
-      final count = await _outbox.countTo(widget.myUsername, other);
-      if (!mounted) return;
-      setState(() {
-        final prev = items[id];
-        items[id] = _ChatItem(
-          dialogId: id,
-          otherUser: other,
-          incomingCount: prev?.incomingCount ?? 0,
-          comeOnline: prev?.comeOnline ?? false,
-          updatedAt:
-              prev?.updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-          hasOutbox: count > 0,
-          isSaved: prev?.isSaved ?? false,
-          avatarBytes: prev?.avatarBytes,
-          preview: prev?.preview ?? '',
-        );
-      });
-      _ensureAvatar(other, id);
-    }
   }
 
   String? _otherFromDialogId(String dialogId, String me) {
@@ -334,7 +304,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
         }
       });
       await _loadSaved();
-      await _loadLocalPending();
     });
   }
   

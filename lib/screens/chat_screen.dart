@@ -22,7 +22,6 @@ import '../services/unread_chats_service.dart';
 import '../services/avatar_cache.dart';
 import '../services/icon_style_service.dart';
 import '../services/incoming_call_service.dart';
-import '../services/outbox_service.dart';
 import '../services/contact_invite_service.dart';
 import '../services/media_message_cache.dart';
 import '../services/media_chunk_codec.dart';
@@ -59,11 +58,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _dialogSignals = DialogSignalService();
   final _wipe = ChatWipeService();
   final _history = ChatHistoryService();
-  final _outbox = OutboxService();
   final _audioRecorder = AudioRecorder();
   String? _mediaRecordPath;
   DateTime? _mediaRecordStarted;
-  bool _flushingOutbox = false;
   bool _mediaActuallyRecording = false;
   bool _micReady = false;
   Timer? _presenceTimer;
@@ -182,8 +179,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final p = _prefsPrefix;
     if (!mounted) return;
-    final legacy = prefs.getBool('${p}block_server');
-    final raw = prefs.getString('${p}server_relay');
     setState(() {
       wipeOnExit = prefs.getBool('${p}wipe') ?? false;
       
@@ -320,15 +315,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await prefs.setStringList('contacts', contacts);
     }
 
-    // 1) Быстро забрать сообщения с сервера
     await _syncServerMessages();
     await UnreadChatsService.instance.clear(widget.roomCode);
     DyhanieApi.instance.chatNudgeAck(room: widget.roomCode).catchError((_) {});
 
-    // 2) Outbox в UI
-    await _loadOutboxIntoUi(other);
-
-    // 3) Только потом P2P
     if (!mounted) return;
     _startPresencePolling();
     if (TransportModeService.instance.isP2p) {
@@ -417,36 +407,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         const SnackBar(content: Text('Нужен доступ к микрофону')),
       );
     }
-  }
-
-  Future<void> _loadOutboxIntoUi(String other) async {
-    final dialogId = OutboxService.dialogIdFor(widget.username, other);
-    final pending = await _outbox.pendingForDialog(
-      dialogId: dialogId,
-      myUsername: widget.username,
-    );
-    if (pending.isEmpty || !mounted) return;
-    setState(() {
-      final keys = messages.map((m) => m['key']?.toString()).toSet();
-      for (final m in pending) {
-        if (keys.contains(m.id)) continue;
-        messages.add({
-          'key': m.id,
-          'text': m.text,
-          'username': widget.username,
-          'timestamp': m.timestamp,
-          'ttl': m.ttl,
-          'p2p': false,
-          'pending': true,
-          'replyText': m.replyText,
-          'replyUser': m.replyUser,
-          'image': m.image,
-          'status': 'pending',
-        });
-      }
-      messages.sort((a, b) =>
-          (a['timestamp'] as int).compareTo(b['timestamp'] as int));
-    });
   }
 
   @override
@@ -587,63 +547,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  Future<void> _flushOutbox() async {
-    if (_flushingOutbox) return;
-    if (!p2pConnected || _p2p == null || !_p2p!.isOpen) return;
-
-    final other = otherUser ?? _otherFromRoomCode();
-    if (other == null) return;
-
-    _flushingOutbox = true;
-    try {
-      final dialogId = OutboxService.dialogIdFor(widget.username, other);
-      final pending = await _outbox.pendingForDialog(
-        dialogId: dialogId,
-        myUsername: widget.username,
-      );
-      if (pending.isEmpty) return;
-
-      final sentIds = <String>[];
-      for (final m in pending) {
-        try {
-          _p2p!.send(jsonEncode({
-            'type': 'msg',
-            'key': m.id,
-            'text': m.text,
-            'timestamp': m.timestamp,
-            'ttl': m.ttl,
-            'replyText': m.replyText,
-            'replyUser': m.replyUser,
-            'image': m.image,
-          }));
-          sentIds.add(m.id);
-        } catch (_) {}
-      }
-
-      if (sentIds.isEmpty) return;
-      await _outbox.removeByIds(sentIds);
-
-      if (!mounted) return;
-      setState(() {
-        for (final msg in messages) {
-          final k = msg['key']?.toString();
-          if (k != null && sentIds.contains(k)) {
-            msg['status'] = 'sent';
-            msg['p2p'] = true;
-            msg['pending'] = false;
-          }
-        }
-      });
-      if (!wipeOnExit) {
-        await _saveHistory();
-      }
-    } finally {
-      _flushingOutbox = false;
-    }
-  }
-
-  
-
   Future<void> _startP2P(String other) async {
     if (_p2p != null) return;
 
@@ -664,7 +567,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _updateConnectionMode();
           _saveChatConfig();
         }
-        _flushOutbox();
         return;
       }
 
@@ -2074,10 +1976,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               }
             }),
             onSearchChanged: (v) => setState(() => searchQuery = v.trim()),
-            onToggleServerBlock: () async {
-              _updateConnectionMode();
-              await _saveChatConfig();
-            },
             onCall: _startCall,
             onToggleWipe: () async {
               setState(() => wipeOnExit = !wipeOnExit);

@@ -24,7 +24,6 @@ class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback onBack;
   final VoidCallback onToggleSearch;
   final ValueChanged<String> onSearchChanged;
-  final VoidCallback onToggleServerBlock;
   final VoidCallback onCall;
   final VoidCallback onToggleWipe;
   final VoidCallback onSettings;
@@ -46,7 +45,6 @@ class ChatAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.onBack,
     required this.onToggleSearch,
     required this.onSearchChanged,
-    required this.onToggleServerBlock,
     required this.onCall,
     required this.onToggleWipe,
     required this.onSettings,

@@ -11,12 +11,18 @@ import '../services/dyhanie_api.dart';
 import '../services/font_service.dart';
 import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
-import '../services/outbox_service.dart';
 import '../services/avatar_cache.dart';
 import '../services/user_search_service.dart';
 import 'chat_screen.dart';
 import 'chats_screen.dart';
 import 'blacklist_screen.dart';
+
+String dialogIdFor(String a, String b) {
+  final x = a.toLowerCase().trim();
+  final y = b.toLowerCase().trim();
+  final parts = [x, y]..sort();
+  return '${parts[0]}_${parts[1]}';
+}
 
 class ContactsScreen extends StatefulWidget {
   final String myUsername;
@@ -118,7 +124,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final to = other.toLowerCase().trim();
     if (to.isEmpty || to == widget.myUsername.toLowerCase()) return;
     try {
-      final room = OutboxService.dialogIdFor(widget.myUsername, to);
+      final room = dialogIdFor(widget.myUsername, to);
       await DyhanieApi.instance.chatNudge(to: to, room: room);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -127,9 +133,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${L.t('error')}: $e')
-
-),
+        SnackBar(content: Text('${L.t('error')}: $e')),
       );
     }
   }
@@ -204,7 +208,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _writeTo(String name) {
-    final roomCode = OutboxService.dialogIdFor(widget.myUsername, name);
+    final roomCode = dialogIdFor(widget.myUsername, name);
     Navigator.push(
       context,
       MaterialPageRoute(
