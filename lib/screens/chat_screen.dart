@@ -770,7 +770,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _clearMyIncomingSignal();
   }
 
-  Future<void> _handleIncomingMediaChunk(
+    Future<void> _handleIncomingMediaChunk(
     Map data,
     String other, {
     required bool viaP2p,
@@ -781,7 +781,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     final done = MediaChunkAssembler.instance.add(map);
-    if (done == null) return; // ещё не все куски
+    if (done == null) return;
 
     final key = done['key']?.toString() ?? '';
     if (key.isEmpty) return;
@@ -807,7 +807,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     HapticFeedback.mediumImpact();
     _scrollEnd();
     _clearMyIncomingSignal();
-
     if (!wipeOnExit) await _saveHistory();
   }
 
@@ -877,7 +876,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
 
-    Future<void> _ingestServerMsg(Map p) async {
+  Future<void> _ingestServerMsg(Map p) async {
     if (blockServerMessages) return;
 
     final msgId = p['msg_id']?.toString() ?? '';
@@ -897,7 +896,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final body = p['body']?.toString() ?? '';
     final contentType = p['content_type']?.toString() ?? 'text';
 
-    // ----- media_chunk: сборка, без пузыря на каждый кусок -----
     if (contentType == 'media_chunk' ||
         (body.startsWith('{') && body.contains('"media_chunk"'))) {
       try {
@@ -906,32 +904,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           j['from'] = from;
           final done =
               MediaChunkAssembler.instance.add(Map<String, dynamic>.from(j));
-
           DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
-
           if (done != null) {
             if ((done['username']?.toString() ?? '').isEmpty) {
               done['username'] = from;
             }
             final doneKey = done['key']?.toString() ?? msgId;
-            if (_knownServerKeys.contains(doneKey)) return;
-            _knownServerKeys.add(doneKey);
-
-            await _persistMediaForMessage(done);
-            if (!mounted) return;
-            setState(() => messages = [...messages, done]);
-            final ttl = done['ttl'] is int ? done['ttl'] as int : 0;
-            if (!isSavedChat && ttl > 0) _startTimer(done);
-            _scrollEnd();
-            UnreadChatsService.instance.clear(widget.roomCode);
-            if (!wipeOnExit) await _saveHistory();
+            if (!_knownServerKeys.contains(doneKey) &&
+                !messages.any((m) => m['key']?.toString() == doneKey)) {
+              _knownServerKeys.add(doneKey);
+              await _persistMediaForMessage(done);
+              if (!mounted) return;
+              setState(() => messages = [...messages, done]);
+              final ttl = done['ttl'] is int ? done['ttl'] as int : 0;
+              if (!isSavedChat && ttl > 0) _startTimer(done);
+              _scrollEnd();
+              UnreadChatsService.instance.clear(widget.roomCode);
+              if (!wipeOnExit) await _saveHistory();
+            }
           }
           return;
         }
-      } catch (_) {
-        // не chunk — ниже обычный разбор
-      }
+      } catch (_) {}
     }
+  
 
     // ----- обычное сообщение -----
     String text = body;
@@ -1125,7 +1121,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<bool> _tryDeliverOnce(Map<String, dynamic> msg) async {
+    Future<bool> _tryDeliverOnce(Map<String, dynamic> msg) async {
     final key = msg['key']?.toString() ?? '';
     final text = msg['text']?.toString() ?? '';
     final imageB64 = msg['image']?.toString();
@@ -1147,18 +1143,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return false;
     }
 
-    // --- тяжёлое media: чанки ---
-    final heavy = mediaB64 != null &&
+    // voice / video — всегда чанками (total может быть 1)
+    if (mediaB64 != null &&
         mediaB64.isNotEmpty &&
-        (msgType == 'voice' ||
-            msgType == 'video' ||
-            msgType == 'image' ||
-            imageB64 == null);
-
-    if (heavy) {
+        (msgType == 'voice' || msgType == 'video')) {
       return _deliverChunked(
         mediaId: key,
-        mediaB64: mediaB64!,
+        mediaB64: mediaB64,
         msgType: msgType,
         mime: mime,
         durationMs: durationMs,
@@ -1171,13 +1162,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
     }
 
-    // картинка без msg_type video/voice — тоже чанками, если большая
+    // крупное фото в image
     if (imageB64 != null && imageB64.isNotEmpty) {
       try {
-        final raw = base64Decode(
-          imageB64.contains(',') ? imageB64.split(',').last : imageB64,
-        );
-        if (MediaChunkCodec.needsChunking(Uint8List.fromList(raw))) {
+        final clean = imageB64.contains(',')
+            ? imageB64.split(',').last.trim()
+            : imageB64;
+        final raw = Uint8List.fromList(base64Decode(clean));
+        if (MediaChunkCodec.needsChunking(raw)) {
           return _deliverChunked(
             mediaId: key,
             mediaB64: imageB64,
@@ -1195,7 +1187,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
 
-    // --- лёгкое: текст / мелкая картинка одним пакетом ---
+    // текст / мелкое фото — одним пакетом
     var p2pOk = false;
     var serverOk = false;
 
@@ -1234,9 +1226,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           'duration_ms': durationMs,
           'mime': mime,
         });
-        final contentType = mediaB64 != null && mediaB64.isNotEmpty
-            ? msgType
-            : (imageB64 != null ? 'image' : 'text');
+        final contentType = imageB64 != null ? 'image' : 'text';
 
         final api = DyhanieApi.instance;
         if (!api.isConnected) await api.connect();
