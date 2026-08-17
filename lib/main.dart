@@ -12,6 +12,7 @@ import 'services/theme_controller.dart';
 import 'services/theme_service.dart';
 import 'services/webrtc_ice.dart';
 import 'services/shorebird_update_service.dart';
+import 'services/transport_mode_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,7 @@ void main() async {
   await IconStyleController.instance.init();
   await ThemeController.instance.init();
   await WebRtcIce.load();
+  await TransportModeService.instance.init();
 
   if (!kIsWeb) {
     try {

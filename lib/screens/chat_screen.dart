@@ -33,6 +33,7 @@ import '../widgets/chat_app_bar.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_media_strip.dart';
+import '../services/transport_mode_service.dart';
 
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
@@ -88,7 +89,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   ServerRelayMode serverRelayMode = ServerRelayMode.open;
 
-  bool get blockServerMessages => serverRelayMode.isBlocked;
+  bool get blockServerMessages => TransportModeService.instance.isP2p;
 
   int selectedTime = 0;
   bool wipeOnExit = false;
@@ -188,8 +189,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final raw = prefs.getString('${p}server_relay');
     setState(() {
       wipeOnExit = prefs.getBool('${p}wipe') ?? false;
-      serverRelayMode =
-          ServerRelayModeX.fromPrefs(raw, legacyBlock: legacy);
+      // serverRelayMode больше не из prefs чата
       selectedTime = prefs.getInt('${p}ttl') ?? 0;
       messageFontSize = prefs.getDouble('${p}font') ?? 16.0;
       messageSizeLevel = prefs.getInt('${p}msg_size') ?? 2;
@@ -201,11 +201,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final p = _prefsPrefix;
     await prefs.setBool('${p}wipe', wipeOnExit);
-    await prefs.setString('${p}server_relay', serverRelayMode.prefsValue);
-    await prefs.setBool('${p}block_server', serverRelayMode.isBlocked);
     await prefs.setInt('${p}ttl', selectedTime);
     await prefs.setDouble('${p}font', messageFontSize);
     await prefs.setInt('${p}msg_size', messageSizeLevel);
+    // не писать server_relay / block_server
   }
 
   Future<void> _clearMyIncomingSignal() async {
@@ -335,7 +334,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     // 3) Только потом P2P
     if (!mounted) return;
     _startPresencePolling();
-    await _startP2P(other);
+    if (TransportModeService.instance.isP2p) {
+      await _startP2P(other);
+    }
     await _clearMyIncomingSignal();
     await _announceInChat(true);
   }
@@ -482,7 +483,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       Future(() async {
         await _syncServerMessages();
         if (!mounted) return;
-        if (otherUser != null && _p2p == null) {
+        if (TransportModeService.instance.isP2p &&
+            otherUser != null &&
+            _p2p == null) {
           await _startP2P(otherUser!);
         }
       });
@@ -490,11 +493,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _updateConnectionMode() {
-    final mode = p2pConnected
-        ? 'P2P'
-        : (serverRelayMode == ServerRelayMode.open
-            ? L.t('via_server')
-            : L.t('p2p_only_wait'));
+    final t = TransportModeService.instance;
+    final String mode;
+    if (t.isServer) {
+      mode = L.t('via_server'); // или 'Сервер'
+    } else {
+      mode = p2pConnected ? 'P2P' : L.t('p2p_only_wait');
+    }
     if (mounted) setState(() => connectionMode = mode);
   }
 
@@ -681,9 +686,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           p2pConnected = false;
-          if (serverRelayMode == ServerRelayMode.soft) {
-            serverRelayMode = ServerRelayMode.open;
-          }
         });
         _updateConnectionMode();
         _saveChatConfig();
@@ -697,6 +699,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       Future.delayed(const Duration(seconds: 2), () {
         if (!mounted || otherUser == null || _p2p != null) return;
+        if (!TransportModeService.instance.isP2p) return;
         _startP2P(otherUser!);
       });
     });
@@ -1003,51 +1006,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final text = _controller.text.trim();
     if (text.isEmpty && imageB64 == null && mediaB64 == null) return;
 
-    final other = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
-    final canP2P = p2pConnected && _p2p != null && _p2p!.isOpen;
-    final canServer = serverRelayMode == ServerRelayMode.open;
-    final useOutbox = !canP2P &&
-        (serverRelayMode == ServerRelayMode.hard ||
-            serverRelayMode == ServerRelayMode.soft);
-
-    // Нет канала сейчас — всё равно кладём локально и ретраим (для media/text)
-    final noChannelNow = !canP2P && !canServer && !useOutbox;
-    final noOtherForServer =
-        (canServer || useOutbox) && (other == null || other.isEmpty);
-
+    final t = TransportModeService.instance;
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final key = canP2P
-        ? 'p2p_$ts'
-        : (useOutbox ? 'ob_$ts' : 'srv_$ts');
+    final key = t.isP2p ? 'p2p_$ts' : 'srv_$ts';
 
     final effectiveType = mediaB64 != null
         ? msgType
         : (imageB64 != null ? 'image' : 'text');
-
-    // outbox (hard/soft без P2P) — как раньше
-    if (useOutbox && other != null && other.isNotEmpty) {
-      try {
-        final ob = await _outbox.add(
-          from: widget.username,
-          to: other,
-          text: text,
-          ttl: selectedTime,
-          image: imageB64 ?? mediaB64,
-          replyText: replyTo?['text']?.toString(),
-          replyUser: replyTo?['username']?.toString(),
-        );
-        // key можно заменить на ob.id, если outbox так устроен
-        // key = ob.id;
-      } catch (_) {}
-    }
-
     final msg = <String, dynamic>{
       'key': key,
       'text': text,
       'username': widget.username,
       'timestamp': ts,
       'ttl': selectedTime,
-      'p2p': canP2P,
+      'p2p': t.isP2p,
       'pending': true,
       'replyText': replyTo?['text'],
       'replyUser': replyTo?['username'],
@@ -1078,11 +1050,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _controller.clear();
     HapticFeedback.lightImpact();
 
-    // 3) Доставка в фоне, без SnackBar об ошибке
-    if (noChannelNow || (canServer && noOtherForServer && !canP2P)) {
-      // некому/некуда — остаётся pending, retry сам выйдет когда появится канал
-      debugPrint('send: no channel/other yet, pending $key');
-    }
     unawaited(_deliverWithRetry(msg));
     unawaited(_notifyDirectIncoming());
   }
@@ -1121,7 +1088,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-    Future<bool> _tryDeliverOnce(Map<String, dynamic> msg) async {
+  Future<bool> _tryDeliverOnce(Map<String, dynamic> msg) async {
     final key = msg['key']?.toString() ?? '';
     final text = msg['text']?.toString() ?? '';
     final imageB64 = msg['image']?.toString();
@@ -1135,13 +1102,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final ttl = msg['ttl'] is int ? msg['ttl'] as int : selectedTime;
     final other = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
 
-    final canP2P = p2pConnected && _p2p != null && _p2p!.isOpen;
-    final canServer = serverRelayMode == ServerRelayMode.open;
+    final t = TransportModeService.instance;
+    final wantServer = t.isServer;
+    final wantP2p = t.isP2p;
 
-    if (!canP2P && !canServer) return false;
-    if (canServer && (other == null || other.isEmpty) && !canP2P) {
-      return false;
+    final p2pOpen =
+        p2pConnected && _p2p != null && _p2p!.isOpen;
+
+    if (wantServer) {
+      if (other == null || other.isEmpty) return false;
+    } else {
+      // только P2P
+      if (!p2pOpen) return false;
     }
+
+    final canP2P = wantP2p && p2pOpen;
+    final canServer = wantServer;
 
     // voice / video — всегда чанками (total может быть 1)
     if (mediaB64 != null &&
@@ -1248,9 +1224,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     }
 
-    if (canP2P && canServer) return p2pOk || serverOk;
-    if (canP2P) return p2pOk;
-    if (canServer) return serverOk;
+    if (wantServer) return serverOk;
+    if (wantP2p) return p2pOk;
     return false;
   }
 
@@ -2023,40 +1998,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           _searchCtrl.clear();
                         }
                       });
-                    },
-                  ),
-
-                  // —— Режим сервера ——
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      serverRelayMode == ServerRelayMode.open
-                          ? AppIcons.cloud
-                          : AppIcons.cloudOff,
-                      color: serverRelayMode == ServerRelayMode.open
-                          ? onSurf.withValues(alpha: 0.75)
-                          : Colors.redAccent,
-                    ),
-                    title: Text(
-                      switch (serverRelayMode) {
-                        ServerRelayMode.open => L.t('server_relay_open'),
-                        ServerRelayMode.soft => L.t('server_relay_soft'),
-                        ServerRelayMode.hard => L.t('server_relay_hard'),
-                      },
-                      style: FontService.style(color: onSurf),
-                    ),
-                    subtitle: Text(
-                      L.t('via_server'),
-                      style: FontService.style(
-                        color: onSurf.withValues(alpha: 0.45),
-                        fontSize: 12,
-                      ),
-                    ),
-                    onTap: () async {
-                      setM(() => serverRelayMode = serverRelayMode.next);
-                      setState(() {});
-                      _updateConnectionMode();
-                      await _saveChatConfig();
                     },
                   ),
 

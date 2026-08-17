@@ -13,6 +13,7 @@ import '../services/icon_style_controller.dart';
 import '../services/locale_service.dart';
 import '../services/incoming_call_service.dart';
 import '../services/unread_chats_service.dart';
+import '../services/transport_mode_service.dart';
 
 import 'auto_lock_settings_screen.dart';
 import 'chats_screen.dart';
@@ -370,6 +371,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return AnimatedBuilder(
       animation: Listenable.merge([
         IconStyleController.instance,
+        TransportModeService.instance,
         // чтобы подписи обновлялись при смене языка
         // если LocaleController — ChangeNotifier:
         // LocaleController.instance,
@@ -441,6 +443,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                         const AutoLockSettingsScreen(),
                                   ),
                                 );
+                              },
+                            ),
+                            // ★ переключатель транспорта
+                            _cornerLink(
+                              label: TransportModeService.instance.label,
+                              align: TextAlign.right,
+                              opacity: 0.95, // чуть ярче — «светится»
+                              onTap: () async {
+                                await TransportModeService.instance.toggle();
                               },
                             ),
                           ],
