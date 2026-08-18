@@ -135,11 +135,11 @@ class CallWebRTCService {
     final kind = p['kind']?.toString();
     final data = p['data'];
     if (kind == 'call_offer') {
-      unawaited(_onOffer(data));
+      unawaited(_applyOffer(data));
     } else if (kind == 'call_answer') {
-      unawaited(_onAnswer(data));
+      unawaited(_applyAnswer(data));
     } else if (kind == 'call_candidate') {
-      unawaited(_onCandidate(data));
+      unawaited(_applyCandidate(data));
     }
   }
 
