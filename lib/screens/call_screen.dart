@@ -83,6 +83,8 @@ class _CallScreenState extends State<CallScreen> {
     });
     _startTimer();
     HapticFeedback.lightImpact();
+    // зафиксировать телефон/динамик после появления remote
+    unawaited(_rtc?.setSpeaker(speakerOn) ?? Future.value());
   }
 
   void _listenPeerSignals() {

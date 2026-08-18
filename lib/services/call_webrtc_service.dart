@@ -78,11 +78,25 @@ class CallWebRTCService {
 
     // Только микрофон
     _localStream = await navigator.mediaDevices.getUserMedia({
-      'audio': true,
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+        'channelCount': 1,
+      },
       'video': false,
     });
     for (final track in _localStream!.getTracks()) {
       await _pc!.addTrack(track, _localStream!);
+    }
+    for (final t in _localStream!.getAudioTracks()) {
+      try {
+        await t.applyConstraints({
+          'echoCancellation': true,
+          'noiseSuppression': true,
+          'autoGainControl': true,
+        });
+      } catch (_) {}
     }
     _statusCtrl.add('mic_ok');
 
