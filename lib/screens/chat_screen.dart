@@ -1317,8 +1317,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
         return;
       }
+      
       final d = info?.duration;
-      final ms = d ! is num ? d.round() : durationMs;
+      final int ms;
+      if (d is int) {
+        ms = d;
+      } else if (d is double) {
+        ms = d.round();
+      } else {
+        ms = durationMs;
+      }
+      await _send(
+        mediaB64: base64Encode(bytes),
+        msgType: 'video',
+        durationMs: ms.clamp(0, 20000),
+        mime: 'video/mp4',
+      );
 
       await _send(
         mediaB64: base64Encode(bytes),
@@ -1401,9 +1415,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       await file.delete();
     } catch (_) {}
-
-    if (!_mediaActuallyRecording) return;
-    _mediaActuallyRecording = false;
 
     if (bytes.isEmpty || bytes.length > 500000) {
       if (mounted && bytes.length > 500000) {
