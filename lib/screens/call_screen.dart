@@ -96,8 +96,7 @@ class _CallScreenState extends State<CallScreen> {
       final p = m['payload'];
       if (p is! Map) return;
       if (p['room']?.toString() != widget.roomCode) return;
-      if ((p['from']?.toString() ?? '').toLowerCase() !=
-          other.toLowerCase()) {
+      if ((p['from']?.toString() ?? '').toLowerCase() != other.toLowerCase()) {
         return;
       }
 
@@ -263,12 +262,11 @@ class _CallScreenState extends State<CallScreen> {
   @override
   Widget build(BuildContext context) {
     final other = widget.otherUser ?? '…';
-    final scheme = Theme.of(context).colorScheme;
     final bg = Theme.of(context).scaffoldBackgroundColor;
-    final onSurf = scheme.onSurface;
+    final onSurf = Theme.of(context).colorScheme.onSurface;
     final incomingWait = widget.isIncoming && !_accepted;
 
-    // ----- ЭКРАН ОТВЕТА (с любого места приложения) -----
+    // ----- Экран ответа -----
     if (incomingWait) {
       return Scaffold(
         backgroundColor: bg,
@@ -283,7 +281,7 @@ class _CallScreenState extends State<CallScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                L.t('incoming_call'), // или 'Входящий вызов'
+                L.t('incoming_call'),
                 textAlign: TextAlign.center,
                 style: FontService.style(
                   fontSize: 16,
@@ -296,18 +294,16 @@ class _CallScreenState extends State<CallScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // Сбросить
                     _answerBtn(
                       icon: Icons.call_end,
                       color: Colors.redAccent,
-                      label: L.t('decline_call'), // 'Сбросить'
+                      label: L.t('decline_call'),
                       onTap: _decline,
                     ),
-                    // Взять
                     _answerBtn(
                       icon: Icons.call,
                       color: Colors.green,
-                      label: L.t('accept_call'), // 'Взять'
+                      label: L.t('accept_call'),
                       onTap: _accept,
                     ),
                   ],
@@ -319,8 +315,82 @@ class _CallScreenState extends State<CallScreen> {
       );
     }
 
-    // ----- уже в звонке: username + таймер + mic/cam/speaker/hangup -----
-    // ... твой текущий UI после accept ...
+    // ----- В звонке -----
+    final underName = connected ? _timeLabel : statusText;
+
+    return Scaffold(
+      backgroundColor: bg,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              width: 1,
+              height: 1,
+              child: RTCVideoView(_remoteRenderer),
+            ),
+            Column(
+              children: [
+                const SizedBox(height: 56),
+                Text(
+                  '@$other',
+                  textAlign: TextAlign.center,
+                  style: FontService.style(fontSize: 28, color: onSurf),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  underName,
+                  textAlign: TextAlign.center,
+                  style: FontService.style(
+                    fontSize: 16,
+                    color: onSurf.withValues(alpha: 0.55),
+                  ),
+                ),
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 36),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _circleBtn(
+                        icon: muted ? Icons.mic_off : Icons.mic,
+                        bg: muted
+                            ? Colors.orangeAccent
+                            : onSurf.withValues(alpha: 0.18),
+                        onTap: _toggleMute,
+                        label: muted ? 'Выкл' : 'Микрофон',
+                      ),
+                      _circleBtn(
+                        icon: Icons.videocam_off,
+                        bg: onSurf.withValues(alpha: 0.12),
+                        onTap: _videoStub,
+                        label: 'Скоро',
+                      ),
+                      _circleBtn(
+                        icon: speakerOn ? Icons.volume_up : Icons.hearing,
+                        bg: speakerOn
+                            ? Colors.blueAccent
+                            : onSurf.withValues(alpha: 0.18),
+                        onTap: _toggleSpeaker,
+                        label: speakerOn ? 'Динамик' : 'Слухалка',
+                      ),
+                      _circleBtn(
+                        icon: Icons.call_end,
+                        bg: Colors.redAccent,
+                        onTap: _hangUp,
+                        size: 68,
+                        label: 'Сброс',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _answerBtn({
@@ -354,6 +424,7 @@ class _CallScreenState extends State<CallScreen> {
       ],
     );
   }
+
   Widget _circleBtn({
     required IconData icon,
     required Color bg,
