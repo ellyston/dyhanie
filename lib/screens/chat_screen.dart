@@ -1298,6 +1298,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         deleteOrigin: false,
         includeAudio: true,
       );
+
       final out = info?.path;
       if (out == null || out.isEmpty) {
         if (mounted) {
@@ -1307,8 +1308,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
         return;
       }
+
       final bytes = await File(out).readAsBytes();
-      if (bytes.isEmpty) return;
+      if (bytes.isEmpty || bytes.length < 1000) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Видео файл пуст')),
+          );
+        }
+        return;
+      }
       if (bytes.length > 4 * 1024 * 1024) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1317,27 +1326,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
         return;
       }
-      
-      final d = info?.duration;
-      final int ms;
-      if (d is int) {
-        ms = d;
-      } else if (d is double) {
-        ms = d.round();
-      } else {
-        ms = durationMs;
-      }
-      await _send(
-        mediaB64: base64Encode(bytes),
-        msgType: 'video',
-        durationMs: ms.clamp(0, 20000),
-        mime: 'video/mp4',
-      );
+
+      final rawDuration = info?.duration;
+      final int ms = rawDuration == null
+          ? durationMs
+          : rawDuration.round().clamp(0, 20000);
 
       await _send(
         mediaB64: base64Encode(bytes),
         msgType: 'video',
-        durationMs: ms.clamp(0, 20000),
+        durationMs: ms,
         mime: 'video/mp4',
       );
     } catch (e) {
