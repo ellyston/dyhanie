@@ -82,7 +82,6 @@ class CallWebRTCService {
         'echoCancellation': true,
         'noiseSuppression': true,
         'autoGainControl': true,
-        'channelCount': 1,
       },
       'video': false,
     });
