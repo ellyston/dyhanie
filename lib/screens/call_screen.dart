@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../services/call_webrtc_service.dart';
 import '../services/font_service.dart';
@@ -35,6 +36,9 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   CallWebRTCService? _rtc;
   final _remoteRenderer = RTCVideoRenderer();
+  final _localRenderer = RTCVideoRenderer();
+  StreamSubscription? _localSub;
+  bool cameraOn = true;
 
   late String statusText;
   bool muted = false;
@@ -89,6 +93,7 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _initRenderer() async {
     await _remoteRenderer.initialize();
+    await _localRenderer.initialize();
   }
 
   void _attachRemote(MediaStream stream) {
@@ -165,6 +170,15 @@ class _CallScreenState extends State<CallScreen> {
       return;
     }
 
+    final cam = await Permission.camera.request();
+    final mic = await Permission.microphone.request();
+    if (!cam.isGranted || !mic.isGranted) {
+      if (mounted) {
+        setState(() => statusText = 'Нужны камера и микрофон');
+      }
+      return;
+    }
+
     
 
     final isCaller = !widget.isIncoming;
@@ -177,8 +191,13 @@ class _CallScreenState extends State<CallScreen> {
       isCaller: isCaller,
       initialOffer: widget.initialOffer,
     );
-
+    
     _remoteSub = _rtc!.remoteStream.listen(_attachRemote);
+    _localSub?.cancel();
+    _localSub = _rtc!.localStream.listen((stream) {
+      _localRenderer.srcObject = stream;
+      if (mounted) setState(() {});
+    });
 
     _rtcStatusSub = _rtc!.status.listen((s) {
       if (!mounted || _closing) return;
@@ -236,6 +255,15 @@ class _CallScreenState extends State<CallScreen> {
     await _rtc?.setSpeaker(speakerOn);
   }
 
+  Future<void> _toggleCamera() async {
+    setState(() => cameraOn = !cameraOn);
+    await _rtc?.setCameraEnabled(cameraOn);
+  }
+
+  Future<void> _switchCamera() async {
+    await _rtc?.switchCamera();
+  }
+
 
   @override
   void dispose() {
@@ -248,6 +276,9 @@ class _CallScreenState extends State<CallScreen> {
     _remoteRenderer.dispose();
     _rtc?.dispose();
     _peerSignalSub?.cancel();
+    _localSub?.cancel();
+    _localRenderer.srcObject = null;
+    _localRenderer.dispose();
     super.dispose();
   }
 
@@ -258,90 +289,143 @@ class _CallScreenState extends State<CallScreen> {
     final onSurf = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: Stack(
+          fit: StackFit.expand,
           children: [
+            // Удалённое видео
+            if (connected)
+              RTCVideoView(
+                _remoteRenderer,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+              )
+            else
+              Container(
+                color: bg,
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.videocam,
+                  size: 64,
+                  color: onSurf.withValues(alpha: 0.25),
+                ),
+              ),
+
+            // Локальное превью
+            Positioned(
+              right: 16,
+              top: 16,
+              width: 110,
+              height: 160,
+              child: GestureDetector(
+                onTap: _switchCamera,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: ColoredBox(
+                    color: Colors.black54,
+                    child: RTCVideoView(
+                      _localRenderer,
+                      mirror: true,
+                      objectFit:
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Имя и статус
+            Positioned(
+              left: 16,
+              right: 16,
+              top: 20,
+              child: Column(
+                children: [
+                  Text(
+                    '@$other',
+                    style: FontService.style(
+                      fontSize: 22,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    connected ? _timeLabel : statusText,
+                    style: FontService.style(
+                      fontSize: 14,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Кнопки
             Positioned(
               left: 0,
-              top: 0,
-              width: 1,
-              height: 1,
-              child: RTCVideoView(_remoteRenderer),
-            ),
-            Column(
-              children: [
-                const SizedBox(height: 48),
-                Icon(
-                  connected ? Icons.phone_in_talk : Icons.ring_volume,
-                  color: onSurf.withValues(alpha: 0.55),
-                  size: 48,
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  '@$other',
-                  style: FontService.style(fontSize: 28, color: onSurf),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  connected ? _timeLabel : statusText,
-                  style: FontService.style(
-                    fontSize: 16,
-                    color: onSurf.withValues(alpha: 0.55),
-                  ),
-                ),
-                const Spacer(),
-                if (widget.isIncoming && !_accepted)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _roundBtn(
-                        icon: Icons.call_end,
-                        color: Colors.redAccent,
-                        label: L.t('decline_call'),
-                        onTap: _decline,
-                        big: true,
-                      ),
-                      _roundBtn(
-                        icon: Icons.call,
-                        color: Colors.green,
-                        label: L.t('accept_call'),
-                        onTap: _accept,
-                        big: true,
-                      ),
-                    ],
-                  )
-                else
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _roundBtn(
-                        icon: muted ? Icons.mic_off : Icons.mic,
-                        color: muted
-                            ? Colors.orangeAccent
-                            : onSurf.withValues(alpha: 0.2),
-                        label: L.t('mic'),
-                        onTap: _toggleMute,
-                      ),
-                      _roundBtn(
-                        icon: Icons.call_end,
-                        color: Colors.redAccent,
-                        onTap: _hangUp,
-                        big: true,
-                      ),
-                      _roundBtn(
-                        icon: speakerOn ? Icons.volume_up : Icons.hearing,
-                        color: speakerOn
-                            ? Colors.blueAccent
-                            : onSurf.withValues(alpha: 0.2),
-                        label: speakerOn ? L.t('speaker') : L.t('earpiece'),
-                        onTap: _toggleSpeaker,
-                      ),
-                    ],
-                  ),
-
-                const SizedBox(height: 48),
-              ],
+              right: 0,
+              bottom: 36,
+              child: widget.isIncoming && !_accepted
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _roundBtn(
+                          icon: Icons.call_end,
+                          color: Colors.redAccent,
+                          label: L.t('decline_call'),
+                          onTap: _decline,
+                          big: true,
+                        ),
+                        _roundBtn(
+                          icon: Icons.call,
+                          color: Colors.green,
+                          label: L.t('accept_call'),
+                          onTap: _accept,
+                          big: true,
+                        ),
+                      ],
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _roundBtn(
+                          icon: muted ? Icons.mic_off : Icons.mic,
+                          color: muted
+                              ? Colors.orangeAccent
+                              : Colors.white24,
+                          label: L.t('mic'),
+                          onTap: _toggleMute,
+                        ),
+                        _roundBtn(
+                          icon: cameraOn
+                              ? Icons.videocam
+                              : Icons.videocam_off,
+                          color: cameraOn
+                              ? Colors.white24
+                              : Colors.orangeAccent,
+                          label: 'Камера',
+                          onTap: _toggleCamera,
+                        ),
+                        _roundBtn(
+                          icon: Icons.call_end,
+                          color: Colors.redAccent,
+                          onTap: _hangUp,
+                          big: true,
+                        ),
+                        _roundBtn(
+                          icon: speakerOn
+                              ? Icons.volume_up
+                              : Icons.hearing,
+                          color: speakerOn
+                              ? Colors.blueAccent
+                              : Colors.white24,
+                          label: speakerOn
+                              ? L.t('speaker')
+                              : L.t('earpiece'),
+                          onTap: _toggleSpeaker,
+                        ),
+                      ],
+                    ),
             ),
           ],
         ),

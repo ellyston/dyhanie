@@ -30,6 +30,9 @@ class CallWebRTCService {
   final _remoteStreamCtrl = StreamController<MediaStream>.broadcast();
   Stream<MediaStream> get remoteStream => _remoteStreamCtrl.stream;
 
+  final _localStreamCtrl = StreamController<MediaStream>.broadcast();
+  Stream<MediaStream> get localStream => _localStreamCtrl.stream;
+
   final _statusCtrl = StreamController<String>.broadcast();
   Stream<String> get status => _statusCtrl.stream;
 
@@ -73,10 +76,17 @@ class CallWebRTCService {
 
     _localStream = await navigator.mediaDevices.getUserMedia({
       'audio': true,
-      'video': false,
+      'video': {
+        'facingMode': 'user',
+        'width': {'ideal': 640},
+        'height': {'ideal': 480},
+      },
     });
     for (final track in _localStream!.getTracks()) {
       await _pc!.addTrack(track, _localStream!);
+    }
+    if (!_localStreamCtrl.isClosed) {
+      _localStreamCtrl.add(_localStream!);
     }
     _statusCtrl.add('mic_ok');
 
@@ -131,7 +141,7 @@ class CallWebRTCService {
   Future<void> _createOffer() async {
     final offer = await _pc!.createOffer({
       'offerToReceiveAudio': 1,
-      'offerToReceiveVideo': 0,
+      'offerToReceiveVideo': 1,
     });
     await _pc!.setLocalDescription(offer);
     await _sendSignal('call_offer', {
@@ -154,7 +164,7 @@ class CallWebRTCService {
 
     final answer = await _pc!.createAnswer({
       'offerToReceiveAudio': 1,
-      'offerToReceiveVideo': 0,
+      'offerToReceiveVideo': 1,
     });
     await _pc!.setLocalDescription(answer);
     await _sendSignal('call_answer', {
@@ -219,6 +229,20 @@ class CallWebRTCService {
     } catch (_) {}
   }
 
+    Future<void> setCameraEnabled(bool enabled) async {
+    for (final t in _localStream?.getVideoTracks() ?? []) {
+      t.enabled = enabled;
+    }
+  }
+
+  Future<void> switchCamera() async {
+    final tracks = _localStream?.getVideoTracks() ?? [];
+    if (tracks.isEmpty) return;
+    try {
+      await Helper.switchCamera(tracks.first);
+    } catch (_) {}
+  }
+
   Future<void> hangUp() async {
     if (_disposed) return;
     _disposed = true;
@@ -242,8 +266,9 @@ class CallWebRTCService {
 
   void dispose() {
     hangUp();
-    _remoteStreamCtrl.close();
-    _statusCtrl.close();
+    if (!_localStreamCtrl.isClosed) _localStreamCtrl.close();
+    if (!_remoteStreamCtrl.isClosed) _remoteStreamCtrl.close();
+    if (!_statusCtrl.isClosed) _statusCtrl.close();
   }
 
  final List<RTCIceCandidate> _pendingCandidates = [];
