@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,7 +11,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_compress/video_compress.dart';
-import 'package:camera/camera.dart';
 
 import '../services/chat_history_service.dart';
 import '../services/chat_wipe_service.dart';
@@ -25,9 +25,9 @@ import '../services/icon_style_service.dart';
 import '../services/incoming_call_service.dart';
 import '../services/contact_invite_service.dart';
 import '../services/media_message_cache.dart';
-import '../services/media_chunk_codec.dart';
 import '../services/media_chunk_assembler.dart';
 import '../services/transport_mode_service.dart';
+import '../services/message_send_service.dart';
 
 import '../widgets/chat_app_bar.dart';
 import '../widgets/chat_input_bar.dart';
@@ -61,6 +61,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _wipe = ChatWipeService();
   final _history = ChatHistoryService();
   final _audioRecorder = AudioRecorder();
+
   String? _mediaRecordPath;
   DateTime? _mediaRecordStarted;
   bool _mediaActuallyRecording = false;
@@ -68,6 +69,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _videoOverlayKey = GlobalKey<VideoCaptureOverlayState>();
   bool _videoOverlayReady = false;
   bool _micReady = false;
+
   Timer? _presenceTimer;
   bool _presenceBusy = false;
   DateTime? _lastPeerPresenceAt;
@@ -76,14 +78,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _timers = <String, Timer>{};
   final _remaining = <String, int>{};
   final _knownServerKeys = <String>{};
-  final _delivering = <String>{};
 
   StreamSubscription? _p2pMsgSub;
   StreamSubscription? _p2pStatusSub;
   StreamSubscription? _apiMsgSub;
   StreamSubscription? _callSignalSub;
   bool _openingCall = false;
-  
 
   P2PService? _p2p;
   bool p2pConnected = false;
@@ -110,6 +110,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   double get messageSizeScale =>
       messageSizeScales[messageSizeLevel.clamp(0, 4)];
+
   Uint8List? backgroundBytes;
   Uint8List? myAvatarBytes;
   Uint8List? otherAvatarBytes;
@@ -128,6 +129,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String callStatusBanner = '';
 
   final timeOptions = [0, 5, 10, 15, 30, 60, 120, 300, 600];
+
   bool _looksLikeDirectDialog(String code) {
     return code.contains('_') && code.length > 6;
   }
@@ -152,7 +154,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _loadAvatars() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // --- свой аватар из prefs ---
     Uint8List? mine;
     final myRaw = prefs.getString('avatar');
     if (myRaw != null && myRaw.isNotEmpty) {
@@ -162,21 +163,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
 
-    // --- аватар собеседника с сервера ---
     Uint8List? otherBytes;
     final other = otherUser ?? _otherFromRoomCode();
     if (other != null && other.isNotEmpty) {
       otherBytes = await AvatarCache.fetch(
         other,
-        forceNetwork: true,              // всегда спросить сервер
-        bindUsername: widget.username,   // session.bind от своего имени
+        forceNetwork: true,
+        bindUsername: widget.username,
       );
     }
 
     if (!mounted) return;
     setState(() {
       myAvatarBytes = mine;
-      otherAvatarBytes = otherBytes;     // поле state, не local otherBytes
+      otherAvatarBytes = otherBytes;
     });
   }
 
@@ -188,7 +188,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {
       wipeOnExit = prefs.getBool('${p}wipe') ?? false;
-      
       selectedTime = prefs.getInt('${p}ttl') ?? 0;
       messageFontSize = prefs.getDouble('${p}font') ?? 16.0;
       messageSizeLevel = prefs.getInt('${p}msg_size') ?? 2;
@@ -203,7 +202,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     await prefs.setInt('${p}ttl', selectedTime);
     await prefs.setDouble('${p}font', messageFontSize);
     await prefs.setInt('${p}msg_size', messageSizeLevel);
-    // не писать server_relay / block_server
   }
 
   Future<void> _clearMyIncomingSignal() async {
@@ -239,15 +237,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
       _scrollEnd();
     } catch (_) {}
-    for (final m in messages) {
-      if (m['username'] == widget.username &&
-          (m['pending'] == true || m['status']?.toString() == 'pending')) {
-        unawaited(_deliverWithRetry(m));
-      }
-    }
+    // pending retry убран вместе с send-orchestration
   }
 
-  /// base64 → файл на диске; в msg пишем media_path
   Future<void> _persistMediaForMessage(Map<String, dynamic> msg) async {
     final key = msg['key']?.toString() ?? '';
     final media = msg['media']?.toString();
@@ -269,7 +261,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// После load истории: media_path → media (base64) для UI / play
   Future<void> _hydrateMedia(List<Map<String, dynamic>> list) async {
     for (final m in list) {
       final existing = m['media']?.toString();
@@ -291,7 +282,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         (msg['image']?.toString().isNotEmpty ?? false);
     if (has) return;
 
-    // имя метода как в вашем MediaMessageCache:
     final b64 = await MediaMessageCache.instance.getBase64(path);
     if (b64 == null || b64.isEmpty) return;
 
@@ -299,18 +289,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (t == 'image') {
       msg['image'] = b64;
     } else {
-      // voice / video / прочее
       msg['media'] = b64;
     }
   }
 
-  /// Сохранить медиа на диск + лёгкий JSON истории
   Future<void> _saveHistory() async {
     if (wipeOnExit) return;
     for (final m in messages) {
       await _persistMediaForMessage(m);
     }
-    await _history.save(widget.roomCode, messages);  // сервис истории, не this
+    await _history.save(widget.roomCode, messages);
   }
 
   Future<void> _notifyDirectIncoming() async {
@@ -318,7 +306,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (other == null || other.isEmpty) return;
     if (!_looksLikeDirectDialog(widget.roomCode)) return;
 
-    // локальный сигнал/бейдж
     try {
       await _dialogSignals.setPendingIn(
         from: widget.username,
@@ -327,7 +314,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
     } catch (_) {}
 
-    // режим P2P — серверный nudge не шлём
     if (!TransportModeService.instance.isServer) return;
 
     try {
@@ -338,9 +324,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         await api.sessionBind(me);
       }
       await api.chatNudge(to: other, room: widget.roomCode);
-    } catch (_) {
-      // полный offline — только кэш; nudge уйдёт при следующем flush/retry
-    }
+    } catch (_) {}
   }
 
   Future<void> _bootstrapPeer() async {
@@ -362,7 +346,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     await _syncServerMessages();
-    unawaited(_flushPending());
+    // _flushPending убран
     await UnreadChatsService.instance.clear(widget.roomCode);
     DyhanieApi.instance.chatNudgeAck(room: widget.roomCode).catchError((_) {});
 
@@ -380,10 +364,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final peer = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
     if (peer == null || peer.isEmpty) return;
 
-    // сразу один раз
     unawaited(_tickPresence(peer));
 
-    // 2 с — меньше гонок и нагрузки на signal
     _presenceTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       unawaited(_tickPresence(peer));
     });
@@ -395,7 +377,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final api = DyhanieApi.instance;
 
-      // 1) свой сокет
       try {
         if (!api.isConnected) await api.connect();
         final me = widget.username.toLowerCase().trim();
@@ -403,26 +384,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           await api.sessionBind(me);
         }
       } catch (_) {
-        // мы offline по signal → в шапке offline
         if (mounted && otherOnline) {
           setState(() => otherOnline = false);
         }
         return;
       }
 
-      // 2) heartbeat: я в этой комнате (серверная карта presence)
       await api.chatPresence(room: widget.roomCode, inside: true);
-
-      // 3) мгновенный сигнал собеседнику
       unawaited(_announceInChat(true));
 
-      // 4) спрашиваем сервер: peer в комнате?
       var online = await api.chatPresenceQuery(
         room: widget.roomCode,
         peer: peer,
       );
 
-      // 5) если query запоздал, но signal был недавно — ещё online
       if (!online &&
           _lastPeerPresenceAt != null &&
           DateTime.now().difference(_lastPeerPresenceAt!) <
@@ -435,7 +410,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() => otherOnline = online);
       }
     } catch (_) {
-      // query/presence упал → не держим «вечный online»
       if (mounted && otherOnline) {
         setState(() => otherOnline = false);
       }
@@ -447,7 +421,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _stopPresencePolling() {
     _presenceTimer?.cancel();
     _presenceTimer = null;
-    final peer = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
     DyhanieApi.instance
         .chatPresence(room: widget.roomCode, inside: false)
         .catchError((_) {});
@@ -487,123 +460,49 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  @override
-  void initState() {   
-    IncomingCallService.instance.setChatHandlingRoom(widget.roomCode);
-    super.initState();
-    _loadChatConfig();
-    _listenChatPresence();
-    p2pStatusText = L.t('none');
-    connectionMode = L.t('no_connection');
-    WidgetsBinding.instance.addObserver(this);
-    _loadAvatars();
-    _updateConnectionMode();
-    _clearMyIncomingSignal();
-    Future.delayed(const Duration(milliseconds: 300), _loadSavedHistory);
-    Future.delayed(const Duration(milliseconds: 200), _bootstrapPeer);
-    _listenServerMessages();
-    Future.microtask(_ensureMic);
-    _listenIncomingCalls();
-    UnreadChatsService.instance.startListening(openRoomCode: widget.roomCode);
-    UnreadChatsService.instance.clear(widget.roomCode);
-    DyhanieApi.instance
-      .chatNudgeAck(room: widget.roomCode)
-       .catchError((_) {});
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _clearMyIncomingSignal();
-      Future(() async {
-        await _syncServerMessages();
-        unawaited(_flushPending());
-        if (!mounted) return;
-
-        final peer =
-            (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
-        if (peer != null && peer.isNotEmpty) {
-          unawaited(_tickPresence(peer));
-        }
-
-        if (TransportModeService.instance.isP2p &&
-            otherUser != null &&
-            _p2p == null) {
-          await _startP2P(otherUser!);
-        }
+  void _enqueueOutgoing(Map<String, dynamic> msg) {
+    if (mounted) {
+      setState(() {
+        messages = [...messages, msg];
+        replyTo = null;
       });
     }
-  }
+    if (!isSavedChat && selectedTime > 0) _startTimer(msg);
+    _scrollEnd();
+    HapticFeedback.lightImpact();
 
-  void _updateConnectionMode() {
-    final t = TransportModeService.instance;
-    final String mode;
-    if (t.isServer) {
-      mode = L.t('via_server'); // или 'Сервер'
-    } else {
-      mode = p2pConnected ? 'P2P' : L.t('p2p_only_wait');
-    }
-    if (mounted) setState(() => connectionMode = mode);
+    unawaited(
+      MessageSendService.instance.deliverWithRetry(
+        msg: msg,
+        roomCode: widget.roomCode,
+        myUsername: widget.username,
+        otherUser: otherUser ?? _otherFromRoomCode(),
+        p2p: _p2p,
+        isP2pOpen: () => p2pConnected && _p2p != null && _p2p!.isOpen,
+        onSent: (updated) {
+          if (!mounted) return;
+          setState(() {
+            final i = messages.indexWhere((m) => m['key'] == updated['key']);
+            if (i >= 0) {
+              messages[i]['status'] = 'sent';
+              messages[i]['pending'] = false;
+              messages[i]['p2p'] = updated['p2p'];
+            }
+          });
+          if (!wipeOnExit) unawaited(_saveHistory());
+        },
+      ),
+    );
+    unawaited(_notifyDirectIncoming());
   }
 
   void _listenServerMessages() {
     _apiMsgSub?.cancel();
     _apiMsgSub = DyhanieApi.instance.events.listen((m) async {
       if (m['type']?.toString() != 'msg.incoming') return;
-
       final p = m['payload'];
       if (p is! Map) return;
-
-      final room = p['room']?.toString() ?? '';
-      if (room != widget.roomCode) return;
-
-      final from = (p['from']?.toString() ?? '').toLowerCase().trim();
-      if (from.isEmpty || from == widget.username.toLowerCase()) return;
-
-      if (await ContactInviteService().isBlocked(from)) return;
-
-      final msgId = p['msg_id']?.toString() ?? '';
-      if (msgId.isEmpty || _knownServerKeys.contains(msgId)) return;
-      _knownServerKeys.add(msgId);
-
-      final body = p['body']?.toString() ?? '';
-      String text = body;
-      String? image;
-      String? replyText;
-      String? replyUser;
-      int ttl = selectedTime;
-      try {
-        if (body.startsWith('{')) {
-          final j = jsonDecode(body) as Map<String, dynamic>;
-          text = j['text']?.toString() ?? '';
-          image = j['image']?.toString();
-          replyText = j['replyText']?.toString();
-          replyUser = j['replyUser']?.toString();
-          ttl = j['ttl'] is int ? j['ttl'] as int : selectedTime;
-        }
-      } catch (_) {}
-
-      final msg = {
-        'key': msgId,
-        'text': text,
-        'username': from,
-        'timestamp': p['created_at'] is int
-            ? p['created_at'] as int
-            : DateTime.now().millisecondsSinceEpoch,
-        'ttl': ttl,
-        'p2p': false,
-        'replyText': replyText,
-        'replyUser': replyUser,
-        'image': image,
-        'status': 'delivered',
-      };
-
-      if (!mounted) return;
-      setState(() => messages = [...messages, msg]);
-      if (!isSavedChat && ttl > 0) _startTimer(msg);
-      _scrollEnd();
-
-      DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
+      await _ingestServerMsg(Map<String, dynamic>.from(p));
     });
   }
 
@@ -613,7 +512,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!DyhanieApi.instance.isConnected) {
         await DyhanieApi.instance.connect();
       }
-      // sessionBind при необходимости…
 
       final list = await DyhanieApi.instance.msgSync();
       final forRoom = list.where((p) {
@@ -627,10 +525,120 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
 
       for (final p in forRoom) {
-        _ingestServerMsg(p); // без await
+        unawaited(_ingestServerMsg(p));
       }
       if (mounted) _scrollEnd();
     } catch (_) {}
+  }
+
+  Future<void> _ingestServerMsg(Map p) async {
+    if (blockServerMessages) return;
+
+    final msgId = p['msg_id']?.toString() ?? '';
+    if (msgId.isEmpty) return;
+
+    if (_knownServerKeys.contains(msgId)) {
+      DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
+      return;
+    }
+
+    final room = p['room']?.toString() ?? '';
+    if (room != widget.roomCode) return;
+
+    final from = p['from']?.toString() ?? '';
+    if (from.isEmpty || from == widget.username) return;
+
+    if (await ContactInviteService().isBlocked(from)) return;
+
+    final body = p['body']?.toString() ?? '';
+    final contentType = p['content_type']?.toString() ?? 'text';
+
+    if (contentType == 'media_chunk' ||
+        (body.startsWith('{') && body.contains('"media_chunk"'))) {
+      try {
+        final j = jsonDecode(body) as Map<String, dynamic>;
+        if (j['type']?.toString() == 'media_chunk') {
+          j['from'] = from;
+          final done =
+              MediaChunkAssembler.instance.add(Map<String, dynamic>.from(j));
+          DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
+          if (done != null) {
+            if ((done['username']?.toString() ?? '').isEmpty) {
+              done['username'] = from;
+            }
+            final doneKey = done['key']?.toString() ?? msgId;
+            if (!_knownServerKeys.contains(doneKey) &&
+                !messages.any((m) => m['key']?.toString() == doneKey)) {
+              _knownServerKeys.add(doneKey);
+              await _persistMediaForMessage(done);
+              if (!mounted) return;
+              setState(() => messages = [...messages, done]);
+              final ttl = done['ttl'] is int ? done['ttl'] as int : 0;
+              if (!isSavedChat && ttl > 0) _startTimer(done);
+              _scrollEnd();
+              UnreadChatsService.instance.clear(widget.roomCode);
+              if (!wipeOnExit) await _saveHistory();
+            }
+          }
+          return;
+        }
+      } catch (_) {}
+    }
+
+    String text = body;
+    String? image;
+    String? media;
+    String msgType = 'text';
+    int? durationMs;
+    String? replyText;
+    String? replyUser;
+    int ttl = selectedTime;
+
+    try {
+      if (body.startsWith('{')) {
+        final j = jsonDecode(body) as Map<String, dynamic>;
+        if (j['type']?.toString() == 'media_chunk') return;
+        text = j['text']?.toString() ?? '';
+        image = j['image']?.toString();
+        media = j['media']?.toString();
+        msgType = j['msg_type']?.toString() ?? 'text';
+        durationMs =
+            j['duration_ms'] is int ? j['duration_ms'] as int : null;
+        replyText = j['replyText']?.toString();
+        replyUser = j['replyUser']?.toString();
+        if (j['ttl'] is int) ttl = j['ttl'] as int;
+      }
+    } catch (_) {}
+
+    final msg = <String, dynamic>{
+      'key': msgId,
+      'text': text,
+      'username': from,
+      'timestamp': p['created_at'] is int
+          ? p['created_at'] as int
+          : DateTime.now().millisecondsSinceEpoch,
+      'ttl': ttl,
+      'p2p': false,
+      'replyText': replyText,
+      'replyUser': replyUser,
+      'image': image,
+      'media': media,
+      'msg_type': msgType,
+      'duration_ms': durationMs,
+      'status': 'delivered',
+    };
+
+    _knownServerKeys.add(msgId);
+    await _persistMediaForMessage(msg);
+
+    if (!mounted) return;
+    setState(() => messages = [...messages, msg]);
+    if (!isSavedChat && ttl > 0) _startTimer(msg);
+    _scrollEnd();
+
+    DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
+    UnreadChatsService.instance.clear(widget.roomCode);
+    if (!wipeOnExit) await _saveHistory();
   }
 
   Future<void> _startP2P(String other) async {
@@ -646,20 +654,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _p2pStatusSub = _p2p!.status.listen((s) {
       if (mounted) setState(() => p2pStatusText = s);
 
-      // успех
       if (s == 'p2p_open') {
         if (mounted) {
           setState(() => p2pConnected = true);
           _updateConnectionMode();
           _saveChatConfig();
         }
-        if (TransportModeService.instance.isP2p) {
-          unawaited(_flushPending());
-        }
+        // _flushPending убран
         return;
       }
 
-      // обрыв / 8 с без open → полный reconnect
       final bad = s == 'need_restart' ||
           s == 'ice_failed' ||
           s.contains('failed') ||
@@ -667,14 +671,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           s.contains('closed') ||
           s.contains('Closed');
       if (!bad) return;
-
-      // уже открыт — need_restart не трогаем
       if (s == 'need_restart' && p2pConnected) return;
 
       if (mounted) {
-        setState(() {
-          p2pConnected = false;
-        });
+        setState(() => p2pConnected = false);
         _updateConnectionMode();
         _saveChatConfig();
       }
@@ -711,13 +711,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _removeLocal(data['key']?.toString() ?? '');
             return;
           }
-
-          // ----- чанки media -----
           if (data['type'] == 'media_chunk') {
             unawaited(_handleIncomingMediaChunk(data, other, viaP2p: true));
             return;
           }
-
           if (data['type'] == 'msg') {
             _addIncomingP2P(data, other);
             return;
@@ -737,6 +734,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void _addIncomingP2P(Map data, String other) {
     final key = data['key']?.toString() ??
         'p2p_${DateTime.now().millisecondsSinceEpoch}';
+    if (messages.any((m) => m['key']?.toString() == key)) return;
+
     final msg = {
       'key': key,
       'text': data['text']?.toString() ?? '',
@@ -761,7 +760,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _clearMyIncomingSignal();
   }
 
-    Future<void> _handleIncomingMediaChunk(
+  Future<void> _handleIncomingMediaChunk(
     Map data,
     String other, {
     required bool viaP2p,
@@ -779,10 +778,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_knownServerKeys.contains(key)) return;
     if (messages.any((m) => m['key']?.toString() == key)) return;
 
-    done['username'] =
-        (done['username']?.toString().isNotEmpty ?? false)
-            ? done['username']
-            : other;
+    done['username'] = (done['username']?.toString().isNotEmpty ?? false)
+        ? done['username']
+        : other;
     done['p2p'] = viaP2p;
     done['status'] = 'delivered';
 
@@ -801,546 +799,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!wipeOnExit) await _saveHistory();
   }
 
-  void _startTimer(Map<String, dynamic> msg) {
-    if (isSavedChat) return;
-    final key = msg['key'] as String;
-    final ttl = (msg['ttl'] as int?) ?? 0;
-    if (ttl <= 0) return;
-
-    final created = msg['timestamp'] as int;
-    var remaining =
-        ttl - ((DateTime.now().millisecondsSinceEpoch - created) ~/ 1000);
-    if (remaining <= 0) {
-      _deleteForBoth(key);
-      return;
-    }
-
-    _remaining[key] = remaining;
-    _timers[key]?.cancel();
-    _timers[key] = Timer.periodic(const Duration(seconds: 1), (t) {
-      remaining--;
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      setState(() => _remaining[key] = remaining);
-      if (remaining <= 0) {
-        t.cancel();
-        _deleteForBoth(key);
-      }
-    });
-  }
-
-  void _removeLocal(String key) {
-    MediaMessageCache.instance.deleteKey(
-      roomCode: widget.roomCode,
-      msgKey: key,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      messages = messages.where((m) => m['key']?.toString() != key).toList();
-      // если чистите _remaining / _timers — как у вас было
-    });
-    if (!wipeOnExit) {
-      _saveHistory();
-    }
-  }
-
-  void _deleteForBoth(String key) {
-    _removeLocal(key);
-    if (p2pConnected && _p2p != null) {
-      _p2p!.send(jsonEncode({'type': 'delete', 'key': key}));
-    }
-  }
-
-  void _scrollEnd() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-
-  Future<void> _ingestServerMsg(Map p) async {
-    if (blockServerMessages) return;
-
-    final msgId = p['msg_id']?.toString() ?? '';
-    if (msgId.isEmpty) return;
-
-    if (_knownServerKeys.contains(msgId)) {
-      DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
-      return;
-    }
-
-    final room = p['room']?.toString() ?? '';
-    if (room != widget.roomCode) return;
-
-    final from = p['from']?.toString() ?? '';
-    if (from.isEmpty || from == widget.username) return;
-
-    final body = p['body']?.toString() ?? '';
-    final contentType = p['content_type']?.toString() ?? 'text';
-
-    if (contentType == 'media_chunk' ||
-        (body.startsWith('{') && body.contains('"media_chunk"'))) {
-      try {
-        final j = jsonDecode(body) as Map<String, dynamic>;
-        if (j['type']?.toString() == 'media_chunk') {
-          j['from'] = from;
-          final done =
-              MediaChunkAssembler.instance.add(Map<String, dynamic>.from(j));
-          DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
-          if (done != null) {
-            if ((done['username']?.toString() ?? '').isEmpty) {
-              done['username'] = from;
-            }
-            final doneKey = done['key']?.toString() ?? msgId;
-            if (!_knownServerKeys.contains(doneKey) &&
-                !messages.any((m) => m['key']?.toString() == doneKey)) {
-              _knownServerKeys.add(doneKey);
-              await _persistMediaForMessage(done);
-              if (!mounted) return;
-              setState(() => messages = [...messages, done]);
-              final ttl = done['ttl'] is int ? done['ttl'] as int : 0;
-              if (!isSavedChat && ttl > 0) _startTimer(done);
-              _scrollEnd();
-              UnreadChatsService.instance.clear(widget.roomCode);
-              if (!wipeOnExit) await _saveHistory();
-            }
-          }
-          return;
-        }
-      } catch (_) {}
-    }
-  
-
-    // ----- обычное сообщение -----
-    String text = body;
-    String? image;
-    String? media;
-    String msgType = 'text';
-    int? durationMs;
-    String? replyText;
-    String? replyUser;
-    int ttl = selectedTime;
-
-    try {
-      if (body.startsWith('{')) {
-        final j = jsonDecode(body) as Map<String, dynamic>;
-        if (j['type']?.toString() == 'media_chunk') {
-          // на всякий случай
-          return;
-        }
-        text = j['text']?.toString() ?? '';
-        image = j['image']?.toString();
-        media = j['media']?.toString();
-        msgType = j['msg_type']?.toString() ?? 'text';
-        durationMs =
-            j['duration_ms'] is int ? j['duration_ms'] as int : null;
-        replyText = j['replyText']?.toString();
-        replyUser = j['replyUser']?.toString();
-        if (j['ttl'] is int) ttl = j['ttl'] as int;
-      }
-    } catch (_) {}
-
-    final msg = <String, dynamic>{
-      'key': msgId,
-      'text': text,
-      'username': from,
-      'timestamp': p['created_at'] is int
-          ? p['created_at'] as int
-          : DateTime.now().millisecondsSinceEpoch,
-      'ttl': ttl,
-      'p2p': false,
-      'replyText': replyText,
-      'replyUser': replyUser,
-      'image': image,
-      'media': media,
-      'msg_type': msgType,
-      'duration_ms': durationMs,
-      'status': 'delivered',
-    };
-
-    _knownServerKeys.add(msgId);
-
-    await _persistMediaForMessage(msg);
-
-    if (!mounted) return;
-    setState(() => messages = [...messages, msg]);
-    if (!isSavedChat && ttl > 0) _startTimer(msg);
-    _scrollEnd();
-
-    DyhanieApi.instance.msgAckRead(msgId).catchError((_) {});
-    UnreadChatsService.instance.clear(widget.roomCode);
-
-    if (!wipeOnExit) {
-      await _saveHistory();
-    }
-  }
-
-  Future<void> _send({
-    String? imageB64,
-    String? mediaB64,
-    String msgType = 'text',
-    int? durationMs,
-    String? mime,
-  }) async {
-    final text = _controller.text.trim();
-    if (text.isEmpty && imageB64 == null && mediaB64 == null) return;
-
-    final t = TransportModeService.instance;
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final key = t.isP2p ? 'p2p_$ts' : 'srv_$ts';
-
-    final effectiveType = mediaB64 != null
-        ? msgType
-        : (imageB64 != null ? 'image' : 'text');
-    final msg = <String, dynamic>{
-      'key': key,
-      'text': text,
-      'username': widget.username,
-      'timestamp': ts,
-      'ttl': selectedTime,
-      'p2p': t.isP2p,
-      'pending': true,
-      'replyText': replyTo?['text'],
-      'replyUser': replyTo?['username'],
-      'image': imageB64,
-      'media': mediaB64,
-      'msg_type': effectiveType,
-      'duration_ms': durationMs,
-      'mime': mime,
-      'status': 'pending',
-    };
-
-    // 1) UI
-    if (mounted) {
-      setState(() {
-        messages = [...messages, msg];
-        replyTo = null;
-      });
-    }
-    if (!isSavedChat && selectedTime > 0) _startTimer(msg);
-    _scrollEnd();
-
-    // 2) Локальный кэш (до сети)
-    await _persistMediaForMessage(msg);
-    if (!wipeOnExit) {
-      await _saveHistory();
-    }
-
-    _controller.clear();
-    HapticFeedback.lightImpact();
-
-    unawaited(_deliverWithRetry(msg));
-    unawaited(_notifyDirectIncoming());
-  }
-
-  Future<void> _deliverWithRetry(Map<String, dynamic> msg) async {
-    final key = msg['key']?.toString() ?? '';
-    if (key.isEmpty) return;
-    if (_delivering.contains(key)) return;
-    _delivering.add(key);
-
-    try {
-      for (var attempt = 0; attempt < 12; attempt++) {
-        if (!mounted) return;
-        
-        await _hydrateOne(msg);
-        final ok = await _tryDeliverOnce(msg);
-        if (ok) {
-          if (!mounted) return;
-          setState(() {
-            final i = messages.indexWhere((m) => m['key'] == key);
-            if (i >= 0) {
-              messages[i]['status'] = 'sent';
-              messages[i]['pending'] = false;
-              messages[i]['p2p'] = TransportModeService.instance.isP2p;
-            }
-          });
-          if (!wipeOnExit) await _saveHistory();
-          return;
-        }
-        // offline / нет P2P — остаёмся pending в кэше
-        await Future<void>.delayed(Duration(seconds: 2 + (attempt ~/ 3)));
-      }
-    } finally {
-      _delivering.remove(key);
-    }
-  }
-
-  Future<void> _flushPending() async {
-    final me = widget.username;
-    final pending = messages.where((m) {
-      return m['username'] == me &&
-          (m['pending'] == true || m['status']?.toString() == 'pending');
-    }).toList();
-
-    for (final m in pending) {
-      unawaited(_deliverWithRetry(m));
-    }
-  }
-
-  Future<bool> _tryDeliverOnce(Map<String, dynamic> msg) async {
-    final key = msg['key']?.toString() ?? '';
-    final text = msg['text']?.toString() ?? '';
-    final imageB64 = msg['image']?.toString();
-    final mediaB64 = msg['media']?.toString();
-    final msgType = msg['msg_type']?.toString() ?? 'text';
-    final durationMs =
-        msg['duration_ms'] is int ? msg['duration_ms'] as int : null;
-    final mime = msg['mime']?.toString();
-    final ts = msg['timestamp'] as int? ??
-        DateTime.now().millisecondsSinceEpoch;
-    final ttl = msg['ttl'] is int ? msg['ttl'] as int : selectedTime;
-    final other = (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
-
-    final t = TransportModeService.instance;
-
-    // ========== только P2P ==========
-    if (t.isP2p) {
-      final open = p2pConnected && _p2p != null && _p2p!.isOpen;
-      if (!open) return false;
-
-      if (mediaB64 != null &&
-          mediaB64.isNotEmpty &&
-          (msgType == 'voice' || msgType == 'video')) {
-        return _deliverChunked(
-          mediaId: key,
-          mediaB64: mediaB64,
-          msgType: msgType,
-          mime: mime,
-          durationMs: durationMs,
-          ttl: ttl,
-          replyText: msg['replyText']?.toString(),
-          replyUser: msg['replyUser']?.toString(),
-          canP2P: true,
-          canServer: false,
-          other: other,
-        );
-      }
-
-      if (imageB64 != null && imageB64.isNotEmpty) {
-        try {
-          final clean = imageB64.contains(',')
-              ? imageB64.split(',').last.trim()
-              : imageB64;
-          final raw = Uint8List.fromList(base64Decode(clean));
-          if (MediaChunkCodec.needsChunking(raw)) {
-            return _deliverChunked(
-              mediaId: key,
-              mediaB64: imageB64,
-              msgType: 'image',
-              mime: mime ?? 'image/jpeg',
-              durationMs: null,
-              ttl: ttl,
-              replyText: msg['replyText']?.toString(),
-              replyUser: msg['replyUser']?.toString(),
-              canP2P: true,
-              canServer: false,
-              other: other,
-            );
-          }
-        } catch (_) {}
-      }
-
-      try {
-        _p2p!.send(jsonEncode({
-          'type': 'msg',
-          'key': key,
-          'text': text,
-          'timestamp': ts,
-          'ttl': ttl,
-          'replyText': msg['replyText'],
-          'replyUser': msg['replyUser'],
-          'image': imageB64,
-          'media': mediaB64,
-          'msg_type': msgType,
-          'duration_ms': durationMs,
-          'mime': mime,
-        }));
-        return true;
-      } catch (_) {
-        return false;
-      }
-    }
-
-    // ========== только СЕРВЕР ==========
-    if (other == null || other.isEmpty) return false;
-
-    final api = DyhanieApi.instance;
-    try {
-      if (!api.isConnected) await api.connect();
-      final me = widget.username.toLowerCase().trim();
-      if (api.boundUsername?.toLowerCase() != me) {
-        await api.sessionBind(me);
-      }
-    } catch (_) {
-      return false; // offline → только кэш + nudge уже в _send
-    }
-
-    if (mediaB64 != null &&
-        mediaB64.isNotEmpty &&
-        (msgType == 'voice' || msgType == 'video')) {
-      return _deliverChunked(
-        mediaId: key,
-        mediaB64: mediaB64,
-        msgType: msgType,
-        mime: mime,
-        durationMs: durationMs,
-        ttl: ttl,
-        replyText: msg['replyText']?.toString(),
-        replyUser: msg['replyUser']?.toString(),
-        canP2P: false,
-        canServer: true,
-        other: other,
-      );
-    }
-
-    if (imageB64 != null && imageB64.isNotEmpty) {
-      try {
-        final clean = imageB64.contains(',')
-            ? imageB64.split(',').last.trim()
-            : imageB64;
-        final raw = Uint8List.fromList(base64Decode(clean));
-        if (MediaChunkCodec.needsChunking(raw)) {
-          return _deliverChunked(
-            mediaId: key,
-            mediaB64: imageB64,
-            msgType: 'image',
-            mime: mime ?? 'image/jpeg',
-            durationMs: null,
-            ttl: ttl,
-            replyText: msg['replyText']?.toString(),
-            replyUser: msg['replyUser']?.toString(),
-            canP2P: false,
-            canServer: true,
-            other: other,
-          );
-        }
-      } catch (_) {}
-    }
-
-    try {
-      final body = jsonEncode({
-        'text': text,
-        'ttl': ttl,
-        'replyText': msg['replyText'],
-        'replyUser': msg['replyUser'],
-        'image': imageB64,
-        'media': mediaB64,
-        'msg_type': msgType,
-        'duration_ms': durationMs,
-        'mime': mime,
-      });
-      final contentType = (msgType == 'voice' || msgType == 'video')
-          ? msgType
-          : (imageB64 != null && imageB64.isNotEmpty ? 'image' : 'text');
-
-      await api.msgSend(
-        room: widget.roomCode,
-        to: other,
-        msgId: key,
-        body: body,
-        contentType: contentType,
-      );
-      _knownServerKeys.add(key);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> _deliverChunked({
-    required String mediaId,
-    required String mediaB64,
-    required String msgType,
-    String? mime,
-    int? durationMs,
-    required int ttl,
-    String? replyText,
-    String? replyUser,
-    required bool canP2P,
-    required bool canServer,
-    String? other,
-  }) async {
-    late Uint8List bytes;
-    try {
-      final clean =
-          mediaB64.contains(',') ? mediaB64.split(',').last.trim() : mediaB64;
-      bytes = Uint8List.fromList(base64Decode(clean));
-    } catch (_) {
-      return false;
-    }
-    if (bytes.isEmpty) return false;
-
-    final parts = MediaChunkCodec.needsChunking(bytes)
-        ? MediaChunkCodec.splitBase64(bytes)
-        : [base64Encode(bytes)];
-    final total = parts.length;
-
-    var anyOk = false;
-    var allOk = true;
-
-    for (var i = 0; i < total; i++) {
-      final env = MediaChunkCodec.envelope(
-        mediaId: mediaId,
-        index: i,
-        total: total,
-        msgType: msgType,
-        dataB64: parts[i],
-        mime: mime,
-        durationMs: durationMs,
-        ttl: ttl,
-        from: widget.username,
-        replyText: replyText,
-        replyUser: replyUser,
-      );
-
-      var chunkOk = false;
-
-      if (canP2P) {
-        try {
-          _p2p!.send(jsonEncode(env));
-          chunkOk = true;
-        } catch (_) {}
-      }
-
-      if (canServer && other != null && other.isNotEmpty) {
-        try {
-          final api = DyhanieApi.instance;
-          if (!api.isConnected) await api.connect();
-          final me = widget.username.toLowerCase().trim();
-          if (api.boundUsername?.toLowerCase() != me) {
-            await api.sessionBind(me);
-          }
-          await api.msgSend(
-            room: widget.roomCode,
-            to: other,
-            msgId: '${mediaId}_$i',
-            body: jsonEncode(env),
-            contentType: 'media_chunk',
-          );
-          chunkOk = true;
-        } catch (_) {}
-      }
-
-      if (chunkOk) {
-        anyOk = true;
-      } else {
-        allOk = false;
-      }
-    }
-
-    // успех попытки: все куски ушли хотя бы одним каналом
-    return allOk && anyOk;
-  }
+  // ---------------------------------------------------------------------------
+  // Media capture (без отправки)
+  // ---------------------------------------------------------------------------
 
   Future<void> _onMediaRecordStart(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) {
@@ -1359,11 +820,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _showVideoOverlay = true;
         _videoOverlayReady = false;
       });
-      // startRecording вызовется из onReady overlay
       return;
     }
 
-    // --- голос (как было) ---
     if (!_micReady) {
       await _ensureMic();
       if (!_micReady) return;
@@ -1455,13 +914,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final int ms = rawDuration == null
           ? durationMs
           : rawDuration.round().clamp(0, 20000);
-
-      await _send(
-        mediaB64: base64Encode(bytes),
+      
+      final msg = MessageSendService.instance.buildMediaMessage(
+        myUsername: widget.username,
         msgType: 'video',
-        durationMs: ms,
+        mediaBase64: base64Encode(bytes),
         mime: 'video/mp4',
+        durationMs: ms,
+        ttlSeconds: selectedTime,
+        replyTo: replyTo,
       );
+      await _persistMediaForMessage(msg);
+      if (!wipeOnExit) await _saveHistory();
+      _enqueueOutgoing(msg);
+     
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1477,18 +943,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
   }
-  
+
   Future<void> _onMediaRecordEnd(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) {
       await _videoOverlayKey.currentState?.stopRecording(send: true);
       return;
     }
 
-
-    if (!_mediaActuallyRecording) {
-      // Не было start (диалог прав / ошибка) — тихо выходим, без «файл пуст»
-      return;
-    }
+    if (!_mediaActuallyRecording) return;
     _mediaActuallyRecording = false;
 
     String? path;
@@ -1510,14 +972,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _mediaRecordPath = null;
     _mediaRecordStarted = null;
 
-    if (path == null || path.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Файл записи пуст')),
-        );
-      }
-      return;
-    }
+    if (path == null || path.isEmpty) return;
 
     final ms = started == null
         ? 0
@@ -1527,7 +982,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       try {
         await File(path).delete();
       } catch (_) {}
-      return; // короткое — без пугающего SnackBar
+      return;
     }
 
     final file = File(path);
@@ -1546,13 +1001,33 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       return;
     }
-
-    await _send(
-      mediaB64: base64Encode(bytes),
+    final msg = MessageSendService.instance.buildMediaMessage(
+      myUsername: widget.username,
       msgType: 'voice',
-      durationMs: ms.clamp(0, 60000),
+      mediaBase64: base64Encode(bytes),
       mime: 'audio/m4a',
+      durationMs: ms.clamp(0, 60000),
+      ttlSeconds: selectedTime,
+      replyTo: replyTo,
     );
+    await _persistMediaForMessage(msg);
+    if (!wipeOnExit) await _saveHistory();
+    _enqueueOutgoing(msg);
+
+  }
+
+  Future<void> _onSendPressed() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    final msg = MessageSendService.instance.buildTextMessage(
+      myUsername: widget.username,
+      text: text,
+      ttlSeconds: selectedTime,
+      replyTo: replyTo,
+    );
+    _controller.clear();
+    _enqueueOutgoing(msg);
   }
 
   Future<void> _onMediaRecordCancel(MediaStripMode mode) async {
@@ -1582,7 +1057,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       } catch (_) {}
     }
   }
-  
+
   Future<void> _attach() async {
     final img = await _picker.pickImage(
       source: ImageSource.gallery,
@@ -1592,12 +1067,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (img == null) return;
     final bytes = await img.readAsBytes();
     if (bytes.length > 600000) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L.t('file_too_big'))),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L.t('file_too_big'))),
+        );
+      }
       return;
     }
-    await _send(imageB64: base64Encode(bytes));
+    final msg = MessageSendService.instance.buildMediaMessage(
+      myUsername: widget.username,
+      msgType: 'image',
+      mediaBase64: base64Encode(bytes),
+      mime: 'image/jpeg',
+      ttlSeconds: selectedTime,
+      replyTo: replyTo,
+    );
+    _enqueueOutgoing(msg);
   }
 
   Future<void> _openEmoji() async {
@@ -1617,6 +1102,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _shareHistory() async {
+    // P2P-рассылка истории — тоже send-path; отключено до нового сервиса
+    
+  }
+
+  void _startTimer(Map<String, dynamic> msg) {
+    if (isSavedChat) return;
+    final key = msg['key'] as String;
+    final ttl = (msg['ttl'] as int?) ?? 0;
+    if (ttl <= 0) return;
+
+    final created = msg['timestamp'] as int;
+    var remaining =
+        ttl - ((DateTime.now().millisecondsSinceEpoch - created) ~/ 1000);
+    if (remaining <= 0) {
+      _deleteForBoth(key);
+      return;
+    }
+
+    _remaining[key] = remaining;
+    _timers[key]?.cancel();
+    _timers[key] = Timer.periodic(const Duration(seconds: 1), (t) {
+      remaining--;
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _remaining[key] = remaining);
+      if (remaining <= 0) {
+        t.cancel();
+        _deleteForBoth(key);
+      }
+    });
+  }
+
   void _pinMessage(Map<String, dynamic> msg) {
     setState(() {
       pinned = {
@@ -1625,6 +1145,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         'key': msg['key'],
       };
     });
+  }
+
+  void _deleteForBoth(String key) {
+    _removeLocal(key);
+    if (p2pConnected && _p2p != null) {
+      try {
+        _p2p!.send(jsonEncode({'type': 'delete', 'key': key}));
+      } catch (_) {}
+    }
+  }
+
+  void _removeLocal(String key) {
+    MediaMessageCache.instance.deleteKey(
+      roomCode: widget.roomCode,
+      msgKey: key,
+    );
+
+    _timers[key]?.cancel();
+    _timers.remove(key);
+    _remaining.remove(key);
+
+    if (!mounted) return;
+    setState(() {
+      messages = messages.where((m) => m['key']?.toString() != key).toList();
+    });
+    if (!wipeOnExit) {
+      unawaited(_saveHistory());
+    }
   }
 
   void _messageActions(Map<String, dynamic> msg) {
@@ -1639,24 +1187,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(AppIcons.reply, color: onSurf.withValues(alpha: 0.7)),
-              title: Text(L.t('reply'), style: FontService.style(color: onSurf)),
+              leading:
+                  Icon(AppIcons.reply, color: onSurf.withValues(alpha: 0.7)),
+              title:
+                  Text(L.t('reply'), style: FontService.style(color: onSurf)),
               onTap: () {
                 setState(() => replyTo = msg);
                 Navigator.pop(ctx);
               },
             ),
             ListTile(
-              leading: Icon(AppIcons.pin, color: onSurf.withValues(alpha: 0.7)),
-              title: Text(L.t('pin_message'), style: FontService.style(color: onSurf)),
+              leading:
+                  Icon(AppIcons.pin, color: onSurf.withValues(alpha: 0.7)),
+              title: Text(L.t('pin_message'),
+                  style: FontService.style(color: onSurf)),
               onTap: () {
                 _pinMessage(msg);
                 Navigator.pop(ctx);
               },
             ),
             ListTile(
-              leading: Icon(AppIcons.copy, color: onSurf.withValues(alpha: 0.7)),
-              title: Text(L.t('copy'), style: FontService.style(color: onSurf)),
+              leading:
+                  Icon(AppIcons.copy, color: onSurf.withValues(alpha: 0.7)),
+              title:
+                  Text(L.t('copy'), style: FontService.style(color: onSurf)),
               onTap: () {
                 Clipboard.setData(
                   ClipboardData(text: msg['text']?.toString() ?? ''),
@@ -1685,39 +1239,69 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _exitRoom() async {
-    _presenceTimer?.cancel();
-    _presenceTimer = null;
-
-    // UI уходит сразу
-    if (!mounted) return;
-    Navigator.pop(context);
-
-    // дальше без ожидания в UI-потоке навигации
-    unawaited(_cleanupAfterExit());
+  void _scrollEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
-  Future<void> _cleanupAfterExit() async {
-    await DyhanieApi.instance
-          .chatPresence(room: widget.roomCode, inside: false)
-          .timeout(const Duration(milliseconds: 500));
-    await _announceInChat(false);
-    try {
-      await DyhanieApi.instance
-          .chatPresence(room: widget.roomCode, inside: false)
-          .timeout(const Duration(milliseconds: 400));
-    } catch (_) {}
-    try {
-      if (!wipeOnExit) {
-        await _saveHistory();
-      } else {
-        await MediaMessageCache.instance.clearRoom(widget.roomCode);
-        await _history.clear(widget.roomCode);
-      }
-    } catch (_) {}
-    try {
-      _p2p?.dispose();
-    } catch (_) {}
+  List<Map<String, dynamic>> get _visibleMessages {
+    if (searchQuery.isEmpty) return messages;
+    final q = searchQuery.toLowerCase();
+    return messages
+        .where((m) => (m['text']?.toString() ?? '').toLowerCase().contains(q))
+        .toList();
+  }
+
+  void _updateConnectionMode() {
+    final t = TransportModeService.instance;
+    final String mode;
+    if (t.isServer) {
+      mode = L.t('via_server');
+    } else {
+      mode = p2pConnected ? 'P2P' : L.t('p2p_only_wait');
+    }
+    if (mounted) setState(() => connectionMode = mode);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Calls / presence listeners
+  // ---------------------------------------------------------------------------
+
+  void _startCall() {
+    final peer = otherUser ?? _otherFromRoomCode();
+    if (peer == null || peer.isEmpty) return;
+    if (callInProgress || _openingCall) return;
+
+    setState(() {
+      otherUser = peer;
+      callInProgress = true;
+      callStatusBanner = L.t('call_calling');
+    });
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CallScreen(
+          roomCode: widget.roomCode,
+          username: widget.username,
+          otherUser: peer,
+          isIncoming: false,
+        ),
+      ),
+    ).then((_) {
+      if (!mounted) return;
+      setState(() {
+        callInProgress = false;
+        callStatusBanner = '';
+      });
+    });
   }
 
   void _listenIncomingCalls() {
@@ -1735,8 +1319,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       final kind = p['kind']?.toString() ?? '';
       if (kind != 'call_offer') return;
-
-      // уже в звонке / открываем
       if (callInProgress || _openingCall) return;
 
       final data = p['data'];
@@ -1746,27 +1328,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
 
       _openIncomingCall(from, offer);
-    });
-  }
-
-  void _listenChatPresence() {
-    DyhanieApi.instance.events.listen((m) {
-      if (m['type']?.toString() != 'signal') return;
-      final p = m['payload'];
-      if (p is! Map) return;
-
-      final from = (p['from']?.toString() ?? '').toLowerCase();
-      final me = widget.username.toLowerCase();
-      if (from.isEmpty || from == me) return;
-      if ((p['kind']?.toString() ?? '') != 'chat_presence') return;
-
-      final data = p['data'];
-      final inside = data is Map && data['in'] == true;
-
-      _lastPeerPresenceAt = DateTime.now();
-
-      if (!mounted) return;
-      setState(() => otherOnline = inside);
     });
   }
 
@@ -1801,90 +1362,63 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-  void _startCall() {
-    final peer = otherUser ?? _otherFromRoomCode();
-    if (peer == null || peer.isEmpty) return;
-    if (callInProgress || _openingCall) return;
+  void _listenChatPresence() {
+    DyhanieApi.instance.events.listen((m) {
+      if (m['type']?.toString() != 'signal') return;
+      final p = m['payload'];
+      if (p is! Map) return;
 
-    setState(() {
-      otherUser = peer;
-      callInProgress = true;
-      callStatusBanner = L.t('call_calling');
-    });
+      final from = (p['from']?.toString() ?? '').toLowerCase();
+      final me = widget.username.toLowerCase();
+      if (from.isEmpty || from == me) return;
+      if ((p['kind']?.toString() ?? '') != 'chat_presence') return;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CallScreen(
-          roomCode: widget.roomCode,
-          username: widget.username,
-          otherUser: peer,
-          isIncoming: false,
-        ),
-      ),
-    ).then((_) {
+      final data = p['data'];
+      final inside = data is Map && data['in'] == true;
+
+      _lastPeerPresenceAt = DateTime.now();
+
       if (!mounted) return;
-      setState(() {
-        callInProgress = false;
-        callStatusBanner = '';
-      });
+      setState(() => otherOnline = inside);
     });
   }
 
-  String _ttlLabel(int sec) {
-    if (sec == 0) return L.t('ttl_none');
-    if (sec == 5) return L.t('sec_5');
-    if (sec == 10) return L.t('sec_10');
-    if (sec == 15) return L.t('sec_15');
-    if (sec == 30) return L.t('sec_30');
-    if (sec == 60) return L.t('min_1');
-    if (sec == 120) return L.t('min_2');
-    if (sec == 300) return L.t('min_5');
-    if (sec == 600) return L.t('min_10');
-    return '$sec';
+  // ---------------------------------------------------------------------------
+  // Exit / settings
+  // ---------------------------------------------------------------------------
+
+  void _exitRoom() {
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+
+    if (!mounted) return;
+    Navigator.pop(context);
+    unawaited(_cleanupAfterExit());
   }
 
-  Future<void> _shareHistory() async {
-    if (messages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L.t('no_messages'))),
-      );
-      return;
-    }
-    if (!p2pConnected || _p2p == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L.t('no_p2p_server_blocked'))),
-      );
-      return;
-    }
-    var sent = 0;
-    for (final m in List<Map<String, dynamic>>.from(messages)) {
-      final text = m['text']?.toString() ?? '';
-      final imageB64 = m['image']?.toString();
-      if (text.isEmpty && imageB64 == null) continue;
-      final key =
-          'p2p_hist_${DateTime.now().millisecondsSinceEpoch}_$sent';
-      final ts = m['timestamp'] is int
-          ? m['timestamp'] as int
-          : DateTime.now().millisecondsSinceEpoch;
-      try {
-        _p2p!.send(jsonEncode({
-          'type': 'msg',
-          'key': key,
-          'text': text,
-          'timestamp': ts,
-          'ttl': 0,
-          'replyText': m['replyText'],
-          'replyUser': m['replyUser'],
-          'image': imageB64,
-        }));
-        sent++;
-      } catch (_) {}
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(L.tParams('history_shared', {'n': '$sent'}))),
-    );
+  Future<void> _cleanupAfterExit() async {
+    try {
+      await DyhanieApi.instance
+          .chatPresence(room: widget.roomCode, inside: false)
+          .timeout(const Duration(milliseconds: 500));
+    } catch (_) {}
+    await _announceInChat(false);
+    try {
+      await DyhanieApi.instance
+          .chatPresence(room: widget.roomCode, inside: false)
+          .timeout(const Duration(milliseconds: 400));
+    } catch (_) {}
+    try {
+      if (!wipeOnExit) {
+        await _saveHistory();
+      } else {
+        await MediaMessageCache.instance.clearRoom(widget.roomCode);
+        await _history.clear(widget.roomCode);
+      }
+    } catch (_) {}
+    try {
+      _p2p?.dispose();
+    } catch (_) {}
   }
 
   void _openSettings() {
@@ -1915,8 +1449,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
-
-                  // —— Поиск ——
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(
@@ -1938,10 +1470,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       });
                     },
                   ),
-
                   const Divider(height: 24),
-
-                  // —— Шрифт ——
                   Text(
                     L.t('font_size'),
                     style: FontService.style(
@@ -1961,8 +1490,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     },
                     onChangeEnd: (_) => _saveChatConfig(),
                   ),
-
-                  // —— TTL ——
                   Text(
                     selectedTime <= 0
                         ? 'Время жизни: не исчезать'
@@ -1975,8 +1502,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   Slider(
                     value: selectedTime.clamp(0, 600).toDouble(),
                     min: 0,
-                    max: 600, // 10 минут
-                    divisions: 60, // шаг 10 с
+                    max: 600,
+                    divisions: 60,
                     label: selectedTime <= 0
                         ? '∞'
                         : (selectedTime < 60
@@ -1989,9 +1516,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     },
                     onChangeEnd: (_) => _saveChatConfig(),
                   ),
-
-                  const SizedBox(height: 8),
-
                   const SizedBox(height: 16),
                   Text(
                     'Размер сообщений',
@@ -2027,8 +1551,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     }),
                   ),
                   const SizedBox(height: 8),
-
-                  // —— Фон ——
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(AppIcons.image,
@@ -2047,8 +1569,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       }
                     },
                   ),
-
-                  // —— История ——
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(AppIcons.share,
@@ -2069,12 +1589,56 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  List<Map<String, dynamic>> get _visibleMessages {
-    if (searchQuery.isEmpty) return messages;
-    final q = searchQuery.toLowerCase();
-    return messages
-        .where((m) => (m['text']?.toString() ?? '').toLowerCase().contains(q))
-        .toList();
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  @override
+  void initState() {
+    IncomingCallService.instance.setChatHandlingRoom(widget.roomCode);
+    super.initState();
+    _loadChatConfig();
+    _listenChatPresence();
+    p2pStatusText = L.t('none');
+    connectionMode = L.t('no_connection');
+    WidgetsBinding.instance.addObserver(this);
+    _loadAvatars();
+    _updateConnectionMode();
+    _clearMyIncomingSignal();
+    Future.delayed(const Duration(milliseconds: 300), _loadSavedHistory);
+    Future.delayed(const Duration(milliseconds: 200), _bootstrapPeer);
+    _listenServerMessages();
+    Future.microtask(_ensureMic);
+    _listenIncomingCalls();
+    UnreadChatsService.instance.startListening(openRoomCode: widget.roomCode);
+    UnreadChatsService.instance.clear(widget.roomCode);
+    DyhanieApi.instance
+        .chatNudgeAck(room: widget.roomCode)
+        .catchError((_) {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _clearMyIncomingSignal();
+      Future(() async {
+        await _syncServerMessages();
+        // _flushPending убран
+        if (!mounted) return;
+
+        final peer =
+            (otherUser ?? _otherFromRoomCode())?.toLowerCase().trim();
+        if (peer != null && peer.isNotEmpty) {
+          unawaited(_tickPresence(peer));
+        }
+
+        if (TransportModeService.instance.isP2p &&
+            otherUser != null &&
+            _p2p == null) {
+          await _startP2P(otherUser!);
+        }
+      });
+    }
   }
 
   @override
@@ -2261,7 +1825,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         replyTo: replyTo,
                         onAttach: _attach,
                         onEmoji: _openEmoji,
-                        onSend: () => _send(),
+                        onSend: _onSendPressed,
                         onClearReply: () => setState(() => replyTo = null),
                       ),
                     ],
