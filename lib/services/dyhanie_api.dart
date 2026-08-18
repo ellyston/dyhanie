@@ -17,7 +17,8 @@ class DyhanieApi {
   final _events = StreamController<Map<String, dynamic>>.broadcast();
 
   String? boundUsername;
-  bool get isConnected => _ch != null;
+  bool get isConnected => _ch != null && _alive;
+  bool _alive = false;
 
   /// События без ответа на id: signal, msg.incoming, room.join_requested, ...
   Stream<Map<String, dynamic>> get events => _events.stream;
@@ -26,14 +27,25 @@ class DyhanieApi {
     await disconnect();
     final uri = Uri.parse(url);
     _ch = WebSocketChannel.connect(uri);
+    _alive = true;
     _sub = _ch!.stream.listen(
       _onData,
-      onError: (e) => _failAll(e),
-      onDone: () => _failAll(StateError('ws closed')),
+      onError: (e) {
+        _alive = false;
+        _ch = null;
+        _failAll(e);
+      },
+      onDone: () {
+        _alive = false;
+        _ch = null;
+        boundUsername = null;
+        _failAll(StateError('ws closed'));
+      },
     );
   }
 
   Future<void> disconnect() async {
+    _alive = false;
     await _sub?.cancel();
     _sub = null;
     try {
