@@ -4,9 +4,9 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-/// Маленькое окно с камерой поверх чата.
+/// PiP-окно камеры поверх чата.
 class VideoCaptureOverlay extends StatefulWidget {
-  final VoidCallback onReady; // камера инициализирована, можно startRecording
+  final VoidCallback onReady;
   final void Function(String path, int durationMs) onFinished;
   final VoidCallback onCancel;
   final int maxSeconds;
@@ -42,7 +42,7 @@ class VideoCaptureOverlayState extends State<VideoCaptureOverlay> {
     try {
       final cams = await availableCameras();
       if (cams.isEmpty) {
-        setState(() => _error = 'Нет камеры');
+        if (mounted) setState(() => _error = 'Нет камеры');
         return;
       }
       final front = cams.firstWhere(
@@ -63,14 +63,17 @@ class VideoCaptureOverlayState extends State<VideoCaptureOverlay> {
       setState(() {
         _ctrl = ctrl;
         _ready = true;
+        _error = null;
       });
-      widget.onReady();
+      // после кадра, чтобы key/state уже в дереве
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onReady();
+      });
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
   }
 
-  /// Вызывать из родителя на long-press start (после onReady).
   Future<void> startRecording() async {
     final c = _ctrl;
     if (c == null || !_ready || _recording) return;
@@ -94,7 +97,6 @@ class VideoCaptureOverlayState extends State<VideoCaptureOverlay> {
     }
   }
 
-  /// Вызывать на long-press end.
   Future<void> stopRecording({required bool send}) async {
     _tick?.cancel();
     _tick = null;
@@ -123,7 +125,7 @@ class VideoCaptureOverlayState extends State<VideoCaptureOverlay> {
         return;
       }
       widget.onFinished(file.path, ms.clamp(0, widget.maxSeconds * 1000));
-    } catch (e) {
+    } catch (_) {
       widget.onCancel();
     }
   }
@@ -135,27 +137,87 @@ class VideoCaptureOverlayState extends State<VideoCaptureOverlay> {
     super.dispose();
   }
 
+  Widget _preview() {
+    final c = _ctrl;
+    if (c == null || !c.value.isInitialized) {
+      return const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+        ),
+      );
+    }
+
+    // CameraPreview без cover часто даёт чёрный/обрезанный кадр в фиксированном боксе
+    final sz = c.value.previewSize;
+    if (sz == null) {
+      return CameraPreview(c);
+    }
+
+    return FittedBox(
+      fit: BoxFit.cover,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        // previewSize: width/height в ориентации сенсора; для портрета меняем местами
+        width: sz.height,
+        height: sz.width,
+        child: CameraPreview(c),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final side = MediaQuery.sizeOf(context).width * 0.55;
-    final h = side * 16 / 9;
+    final mq = MediaQuery.of(context);
+    final w = (mq.size.width * 0.44).clamp(140.0, 220.0);
+    final h = w * 16 / 9;
 
-    return Positioned.fill(
-      child: Center(
-        child: Material(
-          elevation: 8,
-          borderRadius: BorderRadius.circular(16),
-          clipBehavior: Clip.antiAlias,
-          color: Colors.black,
-          child: SizedBox(
-            width: side,
-            height: h,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // … CameraPreview / error / timer как было …
-              ],
-            ),
+    // Сверху справа — не под input/media strip
+    return Positioned(
+      top: mq.padding.top + kToolbarHeight + 12,
+      right: 12,
+      child: Material(
+        elevation: 12,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        color: Colors.black,
+        child: SizedBox(
+          width: w,
+          height: h,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_error != null)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              else
+                _preview(),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  color: Colors.black54,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    _recording
+                        ? '● ${(_elapsedMs / 1000).floor()} / ${widget.maxSeconds} с'
+                        : (_ready ? 'Запись…' : 'Камера…'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

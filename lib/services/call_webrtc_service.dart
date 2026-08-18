@@ -5,6 +5,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'dyhanie_api.dart';
 import 'webrtc_ice.dart';
 
+/// Только аудиозвонок. Сигналинг — DyhanieApi.signal (call_offer/answer/candidate).
 class CallWebRTCService {
   final String roomCode;
   final String username;
@@ -23,15 +24,15 @@ class CallWebRTCService {
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
 
-  bool _remoteSet = false;
+  bool _remoteDescSet = false;
   bool _answerSet = false;
   bool _disposed = false;
+  bool _started = false;
+
+  final List<RTCIceCandidate> _pendingCandidates = [];
 
   final _remoteStreamCtrl = StreamController<MediaStream>.broadcast();
   Stream<MediaStream> get remoteStream => _remoteStreamCtrl.stream;
-
-  final _localStreamCtrl = StreamController<MediaStream>.broadcast();
-  Stream<MediaStream> get localStream => _localStreamCtrl.stream;
 
   final _statusCtrl = StreamController<String>.broadcast();
   Stream<String> get status => _statusCtrl.stream;
@@ -39,14 +40,15 @@ class CallWebRTCService {
   StreamSubscription? _signalSub;
 
   Future<void> start() async {
-    if (_disposed) return;
+    if (_disposed || _started) return;
+    _started = true;
     _statusCtrl.add('init');
 
     await WebRtcIce.load();
     _pc = await createPeerConnection(WebRtcIce.config);
 
     _pc!.onIceCandidate = (RTCIceCandidate c) {
-      if (c.candidate == null || _disposed) return;
+      if (_disposed || c.candidate == null || c.candidate!.isEmpty) return;
       _sendSignal('call_candidate', {
         'candidate': c.candidate,
         'sdpMid': c.sdpMid,
@@ -74,19 +76,13 @@ class CallWebRTCService {
       }
     };
 
+    // Только микрофон
     _localStream = await navigator.mediaDevices.getUserMedia({
       'audio': true,
-      'video': {
-        'facingMode': 'user',
-        'width': {'ideal': 640},
-        'height': {'ideal': 480},
-      },
+      'video': false,
     });
     for (final track in _localStream!.getTracks()) {
       await _pc!.addTrack(track, _localStream!);
-    }
-    if (!_localStreamCtrl.isClosed) {
-      _localStreamCtrl.add(_localStream!);
     }
     _statusCtrl.add('mic_ok');
 
@@ -101,18 +97,25 @@ class CallWebRTCService {
     } else {
       _statusCtrl.add('waiting_offer');
       if (initialOffer != null) {
-        await _onOffer(initialOffer);
+        await _applyOffer(initialOffer);
       }
     }
   }
 
   Future<void> _sendSignal(String kind, dynamic data) async {
+    if (_disposed) return;
     try {
-      await DyhanieApi.instance.signal(
+      final api = DyhanieApi.instance;
+      if (!api.isConnected) await api.connect();
+      final me = username.toLowerCase().trim();
+      if (api.boundUsername?.toLowerCase() != me) {
+        await api.sessionBind(me);
+      }
+      await api.signal(
         room: roomCode,
-        to: otherUser,
+        to: otherUser.toLowerCase().trim(),
         kind: kind,
-        data: data,
+        data: data is Map ? Map<String, dynamic>.from(data) : data,
       );
     } catch (e) {
       _statusCtrl.add('signal_err:$e');
@@ -125,23 +128,27 @@ class CallWebRTCService {
     final p = msg['payload'];
     if (p is! Map) return;
     if (p['room']?.toString() != roomCode) return;
-    if (p['from']?.toString() != otherUser) return;
 
-    final kind = p['kind']?.toString();
+    final from = (p['from']?.toString() ?? '').toLowerCase();
+    if (from.isEmpty || from != otherUser.toLowerCase()) return;
+
+    final kind = p['kind']?.toString() ?? '';
     final data = p['data'];
+
     if (kind == 'call_offer') {
-      _onOffer(data);
+      unawaited(_applyOffer(data));
     } else if (kind == 'call_answer') {
-      _onAnswer(data);
+      unawaited(_applyAnswer(data));
     } else if (kind == 'call_candidate') {
-      _onCandidate(data);
+      unawaited(_applyCandidate(data));
     }
   }
 
   Future<void> _createOffer() async {
+    if (_pc == null || _disposed) return;
     final offer = await _pc!.createOffer({
-      'offerToReceiveAudio': 1,
-      'offerToReceiveVideo': 1,
+      'offerToReceiveAudio': true,
+      'offerToReceiveVideo': false,
     });
     await _pc!.setLocalDescription(offer);
     await _sendSignal('call_offer', {
@@ -152,19 +159,20 @@ class CallWebRTCService {
     _statusCtrl.add('offer_sent');
   }
 
-  Future<void> _onOffer(dynamic data) async {
-    if (_remoteSet || data is! Map) return;
-    await _pc!.setRemoteDescription(
-      RTCSessionDescription(
-        data['sdp']?.toString(),
-        data['type']?.toString(),
-      ),
-    );
-    _remoteSet = true;
+  Future<void> _applyOffer(dynamic data) async {
+    if (_disposed || _pc == null || _remoteDescSet) return;
+    if (data is! Map) return;
+
+    final sdp = data['sdp']?.toString();
+    final type = data['type']?.toString();
+    if (sdp == null || type == null) return;
+
+    await _pc!.setRemoteDescription(RTCSessionDescription(sdp, type));
+    _remoteDescSet = true;
 
     final answer = await _pc!.createAnswer({
-      'offerToReceiveAudio': 1,
-      'offerToReceiveVideo': 1,
+      'offerToReceiveAudio': true,
+      'offerToReceiveVideo': false,
     });
     await _pc!.setLocalDescription(answer);
     await _sendSignal('call_answer', {
@@ -176,22 +184,24 @@ class CallWebRTCService {
     await _flushCandidates();
   }
 
-  Future<void> _onAnswer(dynamic data) async {
-    if (_answerSet || data is! Map) return;
-    await _pc!.setRemoteDescription(
-      RTCSessionDescription(
-        data['sdp']?.toString(),
-        data['type']?.toString(),
-      ),
-    );
+  Future<void> _applyAnswer(dynamic data) async {
+    if (_disposed || _pc == null || _answerSet) return;
+    if (data is! Map) return;
+
+    final sdp = data['sdp']?.toString();
+    final type = data['type']?.toString();
+    if (sdp == null || type == null) return;
+
+    await _pc!.setRemoteDescription(RTCSessionDescription(sdp, type));
     _answerSet = true;
-    _remoteSet = true;
+    _remoteDescSet = true;
     _statusCtrl.add('answer_set');
     await _flushCandidates();
   }
 
-  Future<void> _onCandidate(dynamic data) async {
-    if (data is! Map || _pc == null) return;
+  Future<void> _applyCandidate(dynamic data) async {
+    if (_disposed || _pc == null || data is! Map) return;
+
     final c = RTCIceCandidate(
       data['candidate']?.toString(),
       data['sdpMid']?.toString(),
@@ -199,7 +209,8 @@ class CallWebRTCService {
           ? data['sdpMLineIndex'] as int
           : int.tryParse('${data['sdpMLineIndex']}'),
     );
-    if (!_remoteSet) {
+
+    if (!_remoteDescSet) {
       _pendingCandidates.add(c);
       return;
     }
@@ -209,16 +220,16 @@ class CallWebRTCService {
   }
 
   Future<void> _flushCandidates() async {
-    for (final c in _pendingCandidates) {
+    for (final c in List<RTCIceCandidate>.from(_pendingCandidates)) {
       try {
-        await _pc!.addCandidate(c);
+        await _pc?.addCandidate(c);
       } catch (_) {}
     }
     _pendingCandidates.clear();
   }
 
   Future<void> setMuted(bool muted) async {
-    for (final t in _localStream?.getAudioTracks() ?? []) {
+    for (final t in _localStream?.getAudioTracks() ?? <MediaStreamTrack>[]) {
       t.enabled = !muted;
     }
   }
@@ -229,32 +240,21 @@ class CallWebRTCService {
     } catch (_) {}
   }
 
-    Future<void> setCameraEnabled(bool enabled) async {
-    for (final t in _localStream?.getVideoTracks() ?? []) {
-      t.enabled = enabled;
-    }
-  }
-
-  Future<void> switchCamera() async {
-    final tracks = _localStream?.getVideoTracks() ?? [];
-    if (tracks.isEmpty) return;
-    try {
-      await Helper.switchCamera(tracks.first);
-    } catch (_) {}
-  }
-
   Future<void> hangUp() async {
     if (_disposed) return;
     _disposed = true;
     await _signalSub?.cancel();
     _signalSub = null;
 
-    for (final t in _localStream?.getTracks() ?? []) {
+    for (final t in _localStream?.getTracks() ?? <MediaStreamTrack>[]) {
       await t.stop();
     }
     await _localStream?.dispose();
     _localStream = null;
-    await _pc?.close();
+
+    try {
+      await _pc?.close();
+    } catch (_) {}
     _pc = null;
 
     try {
@@ -265,12 +265,8 @@ class CallWebRTCService {
   }
 
   void dispose() {
-    hangUp();
-    if (!_localStreamCtrl.isClosed) _localStreamCtrl.close();
+    unawaited(hangUp());
     if (!_remoteStreamCtrl.isClosed) _remoteStreamCtrl.close();
     if (!_statusCtrl.isClosed) _statusCtrl.close();
   }
-
- final List<RTCIceCandidate> _pendingCandidates = [];
-
 }
