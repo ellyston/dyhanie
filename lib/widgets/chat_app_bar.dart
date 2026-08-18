@@ -88,10 +88,7 @@ class _ChatAppBarState extends State<ChatAppBar>
   }
 
   Color _statusColor(Color onSurf) {
-    if (widget.otherOnline) {
-      return Colors.greenAccent.withValues(alpha: 0.9);
-    }
-    return onSurf.withValues(alpha: 0.7);
+    return onSurf.withValues(alpha: 0.55);
   }
 
   Widget _avatar(Uint8List? bytes, String? name, {bool highlight = false}) {
@@ -104,9 +101,7 @@ class _ChatAppBarState extends State<ChatAppBar>
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: highlight
-              ? Colors.greenAccent.withValues(alpha: 0.7)
-              : onSurf.withValues(alpha: 0.25),
+          color: onSurf.withValues(alpha: 0.25),
           width: 1.5,
         ),
       ),
@@ -224,7 +219,7 @@ class _ChatAppBarState extends State<ChatAppBar>
               widget.wipeOnExit ? L.t('wipe_on_exit') : L.t('keep_on_exit'),
           icon: Icon(
             widget.wipeOnExit ? AppIcons.wipe : Icons.save_outlined,
-            color: widget.wipeOnExit ? Colors.redAccent : Colors.greenAccent,
+            color: onSurf.withValues(alpha: 0.7)
           ),
           onPressed: widget.onToggleWipe,
         ),

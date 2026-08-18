@@ -75,13 +75,15 @@ class MediaChunkAssembler {
     _map.remove(mediaId);
    final bytes = MediaChunkCodec.joinBase64(a.parts);
     _map.remove(mediaId);
+    final b64 = base64Encode(bytes);
     return {
       'key': mediaId,
       'text': '',
       'username': a.from ?? '',
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'ttl': a.ttl ?? 0,
-      'media': base64Encode(bytes),
+      'media': b64,
+      'image': a.msgType == 'image' ? b64 : null,
       'msg_type': a.msgType,
       'duration_ms': a.durationMs,
       'mime': a.mime,

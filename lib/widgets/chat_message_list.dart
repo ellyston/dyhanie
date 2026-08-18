@@ -116,7 +116,11 @@ class ChatMessageList extends StatelessWidget {
         final text = msg['text']?.toString() ?? '';
         final isP2P = msg['p2p'] == true;
         final status = msg['status']?.toString() ?? '';
-        final img = msg['image']?.toString();
+        final img = (msg['image']?.toString().isNotEmpty ?? false)
+            ? msg['image'].toString()
+            : ((msg['msg_type']?.toString() == 'image')
+                ? msg['media']?.toString()
+                : null);
         final ts = msg['timestamp'] as int? ?? 0;
 
         Widget bubble = Align(
@@ -177,20 +181,27 @@ class ChatMessageList extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (img != null)
+                  if (img != null && img.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                         child: Image.memory(
-                          base64Decode(img),
+                          base64Decode(
+                            img.contains(',')
+                                ? img.split(',').last.trim()
+                                : img,
+                          ),
+                          key: ValueKey('img_$key'), // key сообщения из msg['key']
+                          gaplessPlayback: true,     // не мигать при rebuild
                           fit: BoxFit.cover,
                           width: 200,
+                          filterQuality: FilterQuality.medium,
                           errorBuilder: (_, __, ___) => Text(
                             L.t('image_load_error'),
                             style: FontService.style(
-                              fontSize: 40,
-                              color: onSurf,
+                              fontSize: 14,
+                              color: onSurf.withValues(alpha: 0.5),
                             ),
                           ),
                         ),

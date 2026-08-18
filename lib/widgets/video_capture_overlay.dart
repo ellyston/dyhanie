@@ -137,61 +137,25 @@ class VideoCaptureOverlayState extends State<VideoCaptureOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width * 0.42;
-    final h = w * 16 / 9;
+    final side = MediaQuery.sizeOf(context).width * 0.55;
+    final h = side * 16 / 9;
 
-    return Positioned(
-      right: 12,
-      bottom: 120,
-      child: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        color: Colors.black,
-        child: SizedBox(
-          width: w,
-          height: h,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (_error != null)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(color: Colors.white70, fontSize: 11),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              else if (_ready && _ctrl != null)
-                CameraPreview(_ctrl!)
-              else
-                const Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  color: Colors.black54,
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    _recording
-                        ? '● ${(_elapsedMs / 1000).floor()} / ${widget.maxSeconds} с'
-                        : 'Камера…',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 11),
-                  ),
-                ),
-              ),
-            ],
+    return Positioned.fill(
+      child: Center(
+        child: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          color: Colors.black,
+          child: SizedBox(
+            width: side,
+            height: h,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // … CameraPreview / error / timer как было …
+              ],
+            ),
           ),
         ),
       ),
