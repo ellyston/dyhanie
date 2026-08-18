@@ -129,24 +129,13 @@ class ChatMessageList extends StatelessWidget {
             onLongPress: () => onLongPress(msg),
             child: Container(
               margin: const EdgeInsets.only(bottom: 12),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.75,
-              ),
-              decoration: BoxDecoration(
-                color: isMe
-                    ? onSurf.withValues(alpha: 0.18)
-                    : onSurf.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isMe ? 18 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 18),
-                ),
+                maxWidth: MediaQuery.of(context).size.width * 0.78,
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   if (!isMe)
                     Text(
@@ -157,26 +146,14 @@ class ChatMessageList extends StatelessWidget {
                       ),
                     ),
                   if (msg['replyText'] != null)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: onSurf.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border(
-                          left: BorderSide(
-                            color: onSurf.withValues(alpha: 0.4),
-                            width: 2,
-                          ),
-                        ),
-                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
                       child: Text(
                         '${msg['replyUser']}: ${msg['replyText']}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: FontService.style(
-                          color: onSurf.withValues(alpha: 0.55),
+                          color: onSurf.withValues(alpha: 0.5),
                           fontSize: 12,
                         ),
                       ),
@@ -192,11 +169,10 @@ class ChatMessageList extends StatelessWidget {
                                 ? img.split(',').last.trim()
                                 : img,
                           ),
-                          key: ValueKey('img_$key'), // key сообщения из msg['key']
-                          gaplessPlayback: true,     // не мигать при rebuild
+                          key: ValueKey('img_$key'),
+                          gaplessPlayback: true,
                           fit: BoxFit.cover,
                           width: 200,
-                          filterQuality: FilterQuality.medium,
                           errorBuilder: (_, __, ___) => Text(
                             L.t('image_load_error'),
                             style: FontService.style(
@@ -254,19 +230,7 @@ class ChatMessageList extends StatelessWidget {
                           return L.t('via_server');
                         }(),
                         style: FontService.style(
-                          color: () {
-                            final st = msg['status']?.toString() ?? '';
-                            final pending =
-                                msg['pending'] == true || st == 'pending';
-                            if (pending) {
-                              return Colors.orangeAccent.withValues(alpha: 0.9);
-                            }
-                            if (st == 'error') return Colors.redAccent;
-                            if (isP2P) {
-                              return Colors.greenAccent.withValues(alpha: 0.8);
-                            }
-                            return onSurf.withValues(alpha: 0.3);
-                          }(),
+                          color: onSurf.withValues(alpha: 0.35),
                           fontSize: 10,
                         ),
                       ),
