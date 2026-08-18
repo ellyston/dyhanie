@@ -63,7 +63,7 @@ class _CallScreenState extends State<CallScreen> {
       _startRtc();
     }
 
-    _ringTimeout = Timer(const Duration(seconds: 45), () async {
+    _ringTimeout = Timer(const Duration(seconds: 111), () async {
       if (!connected && mounted && !_closing) {
         await _finish();
       }
@@ -373,7 +373,7 @@ class _CallScreenState extends State<CallScreen> {
                             ? Colors.blueAccent
                             : onSurf.withValues(alpha: 0.18),
                         onTap: _toggleSpeaker,
-                        label: speakerOn ? 'Динамик' : 'Слухалка',
+                        label: speakerOn ? 'Динамик' : 'Телефон',
                       ),
                       _circleBtn(
                         icon: Icons.call_end,

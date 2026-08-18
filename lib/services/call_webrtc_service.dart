@@ -129,18 +129,17 @@ class CallWebRTCService {
     if (p is! Map) return;
     if (p['room']?.toString() != roomCode) return;
 
-    final from = (p['from']?.toString() ?? '').toLowerCase();
-    if (from.isEmpty || from != otherUser.toLowerCase()) return;
+    final from = (p['from']?.toString() ?? '').toLowerCase().trim();
+    if (from != otherUser.toLowerCase().trim()) return;
 
-    final kind = p['kind']?.toString() ?? '';
+    final kind = p['kind']?.toString();
     final data = p['data'];
-
     if (kind == 'call_offer') {
-      unawaited(_applyOffer(data));
+      unawaited(_onOffer(data));
     } else if (kind == 'call_answer') {
-      unawaited(_applyAnswer(data));
+      unawaited(_onAnswer(data));
     } else if (kind == 'call_candidate') {
-      unawaited(_applyCandidate(data));
+      unawaited(_onCandidate(data));
     }
   }
 

@@ -314,8 +314,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
     } catch (_) {}
 
-    if (!TransportModeService.instance.isServer) return;
-
     try {
       final api = DyhanieApi.instance;
       if (!api.isConnected) await api.connect();
