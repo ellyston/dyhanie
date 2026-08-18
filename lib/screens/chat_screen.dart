@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_compress/video_compress.dart';
+import 'package:camera/camera.dart';
 
 import '../services/chat_history_service.dart';
 import '../services/chat_wipe_service.dart';
@@ -26,12 +27,13 @@ import '../services/contact_invite_service.dart';
 import '../services/media_message_cache.dart';
 import '../services/media_chunk_codec.dart';
 import '../services/media_chunk_assembler.dart';
+import '../services/transport_mode_service.dart';
 
 import '../widgets/chat_app_bar.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_media_strip.dart';
-import '../services/transport_mode_service.dart';
+import '../widgets/video_capture_overlay.dart';
 
 import 'call_screen.dart';
 import 'emoji_picker_screen.dart';
@@ -62,6 +64,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? _mediaRecordPath;
   DateTime? _mediaRecordStarted;
   bool _mediaActuallyRecording = false;
+  bool _showVideoOverlay = false;
+  final _videoOverlayKey = GlobalKey<VideoCaptureOverlayState>();
+  bool _videoOverlayReady = false;
   bool _micReady = false;
   Timer? _presenceTimer;
 
@@ -1215,14 +1220,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _onMediaRecordStart(MediaStripMode mode) async {
     if (mode == MediaStripMode.video) {
-      await _recordVideoMessage();
+      final cam = await Permission.camera.request();
+      final mic = await Permission.microphone.request();
+      if (!cam.isGranted || !mic.isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Нужны камера и микрофон')),
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _showVideoOverlay = true;
+        _videoOverlayReady = false;
+      });
+      // startRecording вызовется из onReady overlay
       return;
     }
 
+    // --- голос (как было) ---
     if (!_micReady) {
       await _ensureMic();
       if (!_micReady) return;
-      // Право только что выдали — не начинаем запись в этом же жесте
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1237,20 +1257,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (await _audioRecorder.isRecording()) {
         await _audioRecorder.stop();
       }
-
       final dir = await getTemporaryDirectory();
       final path =
           '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
       await _audioRecorder.start(
         const RecordConfig(
           encoder: AudioEncoder.aacLc,
           bitRate: 32000,
           sampleRate: 22050,
         ),
-        path: path, // ← не _mediaRecordPath!
+        path: path,
       );
-
       _mediaRecordPath = path;
       _mediaRecordStarted = DateTime.now();
       _mediaActuallyRecording = true;
@@ -1266,24 +1283,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _recordVideoMessage() async {
-    try {
-      final file = await _picker.pickVideo(
-        source: ImageSource.camera,
-        maxDuration: const Duration(seconds: 10),
-      );
-      if (file == null) return;
+  Future<void> _onVideoFileReady(String path, int durationMs) async {
+    if (mounted) {
+      setState(() {
+        _showVideoOverlay = false;
+        _videoOverlayReady = false;
+      });
+    }
 
-      // Сжатие ~360p / LowQuality
+    try {
       final info = await VideoCompress.compressVideo(
-        file.path,
+        path,
         quality: VideoQuality.LowQuality,
         deleteOrigin: false,
         includeAudio: true,
       );
-
-      final path = info?.path;
-      if (path == null || path.isEmpty) {
+      final out = info?.path;
+      if (out == null || out.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Не удалось сжать видео')),
@@ -1291,31 +1307,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
         return;
       }
-
-      final compressed = File(path);
-      final bytes = await compressed.readAsBytes();
+      final bytes = await File(out).readAsBytes();
       if (bytes.isEmpty) return;
-
       if (bytes.length > 4 * 1024 * 1024) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${L.t('file_too_big')} (${(bytes.length / 1024 / 1024).toStringAsFixed(1)} MB)',
-              ),
-            ),
+            SnackBar(content: Text(L.t('file_too_big'))),
           );
         }
         return;
       }
-
-      final durationMs = info?.duration?.round() ?? 0; // если API даёт Duration
-      // в части версий: info.duration — double в ms → durationMs = info.duration?.toInt()
+      final d = info?.duration;
+      final ms = d ! is num ? d.round() : durationMs;
 
       await _send(
         mediaB64: base64Encode(bytes),
         msgType: 'video',
-        durationMs: durationMs is int ? durationMs : 0,
+        durationMs: ms.clamp(0, 20000),
         mime: 'video/mp4',
       );
     } catch (e) {
@@ -1326,13 +1334,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     } finally {
       try {
+        await File(path).delete();
+      } catch (_) {}
+      try {
         await VideoCompress.deleteAllCache();
       } catch (_) {}
     }
   }
   
   Future<void> _onMediaRecordEnd(MediaStripMode mode) async {
-    if (mode == MediaStripMode.video) return;
+    if (mode == MediaStripMode.video) {
+      await _videoOverlayKey.currentState?.stopRecording(send: true);
+      return;
+    }
+
 
     if (!_mediaActuallyRecording) {
       // Не было start (диалог прав / ошибка) — тихо выходим, без «файл пуст»
@@ -1387,6 +1402,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await file.delete();
     } catch (_) {}
 
+    if (!_mediaActuallyRecording) return;
+    _mediaActuallyRecording = false;
+
     if (bytes.isEmpty || bytes.length > 500000) {
       if (mounted && bytes.length > 500000) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1405,6 +1423,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _onMediaRecordCancel(MediaStripMode mode) async {
+    if (mode == MediaStripMode.video) {
+      await _videoOverlayKey.currentState?.stopRecording(send: false);
+      if (mounted) {
+        setState(() {
+          _showVideoOverlay = false;
+          _videoOverlayReady = false;
+        });
+      }
+      return;
+    }
+
     _mediaActuallyRecording = false;
     try {
       if (await _audioRecorder.isRecording()) {
@@ -1992,103 +2021,133 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             },
             onSettings: _openSettings,
           ),
-          body: Column(
+          body: Stack(
+            clipBehavior: Clip.none,
             children: [
-              if (callStatusBanner.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  color: callInProgress
-                      ? Colors.green.withValues(alpha: 0.25)
-                      : onSurf.withValues(alpha: 0.08),
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    callStatusBanner,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: onSurf),
+              Column(
+                children: [
+                  if (callStatusBanner.isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      color: callInProgress
+                          ? Colors.green.withValues(alpha: 0.25)
+                          : onSurf.withValues(alpha: 0.08),
+                      padding: const EdgeInsets.all(8),
+                      child: Text(
+                        callStatusBanner,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: onSurf),
+                      ),
+                    ),
+                  if (pinned != null)
+                    Container(
+                      width: double.infinity,
+                      color: onSurf.withValues(alpha: 0.08),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            AppIcons.pin,
+                            color: onSurf.withValues(alpha: 0.55),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${pinned!['username']}: ${pinned!['text']}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: onSurf.withValues(alpha: 0.75),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              AppIcons.close,
+                              size: 16,
+                              color: onSurf.withValues(alpha: 0.4),
+                            ),
+                            onPressed: () => setState(() => pinned = null),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+                    child: ChatMessageList(
+                      messages: list,
+                      myUsername: widget.username,
+                      fontSize: messageFontSize,
+                      videoSizeLevel: messageSizeLevel,
+                      isSavedChat: isSavedChat,
+                      selectedTime: selectedTime,
+                      remaining: _remaining,
+                      otherLastRead: otherLastRead,
+                      scrollController: _scroll,
+                      onLongPress: _messageActions,
+                      onSwipeDelete: _deleteForBoth,
+                    ),
                   ),
-                ),
-              if (pinned != null)
-                Container(
-                  width: double.infinity,
-                  color: onSurf.withValues(alpha: 0.08),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    children: [
-                      Icon(AppIcons.pin,
-                          color: onSurf.withValues(alpha: 0.55), size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
+                  if (typingUser != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, bottom: 4),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
                         child: Text(
-                          '${pinned!['username']}: ${pinned!['text']}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          '@$typingUser ${L.t('typing')}',
                           style: TextStyle(
-                            color: onSurf.withValues(alpha: 0.75),
+                            color: onSurf.withValues(alpha: 0.4),
                             fontSize: 13,
                           ),
                         ),
                       ),
-                      IconButton(
-                        icon: Icon(
-                          AppIcons.close,
-                          size: 16,
-                          color: onSurf.withValues(alpha: 0.4),
-                        ),
-                        onPressed: () => setState(() => pinned = null),
+                    ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ChatMediaStrip(
+                        onRecordStart: _onMediaRecordStart,
+                        onRecordEnd: _onMediaRecordEnd,
+                        onRecordCancel: _onMediaRecordCancel,
+                      ),
+                      ChatInputBar(
+                        controller: _controller,
+                        p2pConnected: p2pConnected,
+                        blockServerMessages: blockServerMessages,
+                        replyTo: replyTo,
+                        onAttach: _attach,
+                        onEmoji: _openEmoji,
+                        onSend: () => _send(),
+                        onClearReply: () => setState(() => replyTo = null),
                       ),
                     ],
                   ),
-                ),
-              Expanded(
-                child: ChatMessageList(
-                  messages: list,
-                  myUsername: widget.username,
-                  fontSize: messageFontSize,
-                  videoSizeLevel: messageSizeLevel,
-                  isSavedChat: isSavedChat,
-                  selectedTime: selectedTime,
-                  remaining: _remaining,
-                  otherLastRead: otherLastRead,
-                  scrollController: _scroll,
-                  onLongPress: _messageActions,
-                  onSwipeDelete: _deleteForBoth,
-                ),
-              ),
-              if (typingUser != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 16, bottom: 4),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '@$typingUser ${L.t('typing')}',
-                      style: TextStyle(
-                        color: onSurf.withValues(alpha: 0.4),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ChatMediaStrip(
-                    onRecordStart: _onMediaRecordStart,
-                    onRecordEnd: _onMediaRecordEnd,
-                    onRecordCancel: _onMediaRecordCancel,
-                  ),
-                  ChatInputBar(
-                    controller: _controller,
-                    p2pConnected: p2pConnected,
-                    blockServerMessages: blockServerMessages,
-                    replyTo: replyTo,
-                    onAttach: _attach,
-                    onEmoji: _openEmoji,
-                    onSend: () => _send(),
-                    onClearReply: () => setState(() => replyTo = null),
-                  ),
                 ],
               ),
+              if (_showVideoOverlay)
+                VideoCaptureOverlay(
+                  key: _videoOverlayKey,
+                  maxSeconds: 20,
+                  onReady: () {
+                    _videoOverlayReady = true;
+                    _videoOverlayKey.currentState?.startRecording();
+                  },
+                  onFinished: (path, ms) {
+                    unawaited(_onVideoFileReady(path, ms));
+                  },
+                  onCancel: () {
+                    if (mounted) {
+                      setState(() {
+                        _showVideoOverlay = false;
+                        _videoOverlayReady = false;
+                      });
+                    }
+                  },
+                ),
             ],
           ),
         ),

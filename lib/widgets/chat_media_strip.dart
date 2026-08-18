@@ -5,8 +5,7 @@ import 'package:flutter/services.dart';
 
 enum MediaStripMode { voice, video }
 
-/// Над полем ввода: tap = голос↔видео, hold = запись (только голос).
-/// Видео — tap в режиме «Видео» (без удержания таймера 20 с).
+/// Тап = голос ↔ видео. Зажим = запись (голос или видео-окно).
 class ChatMediaStrip extends StatefulWidget {
   final void Function(MediaStripMode mode) onRecordStart;
   final void Function(MediaStripMode mode) onRecordEnd;
@@ -31,6 +30,10 @@ class _ChatMediaStripState extends State<ChatMediaStrip> {
   int _elapsedMs = 0;
 
   static const _maxVoiceMs = 60 * 1000;
+  static const _maxVideoMs = 20 * 1000;
+
+  int get _maxMs =>
+      _mode == MediaStripMode.voice ? _maxVoiceMs : _maxVideoMs;
 
   void _toggleMode() {
     if (_recording) return;
@@ -42,55 +45,42 @@ class _ChatMediaStripState extends State<ChatMediaStrip> {
     });
   }
 
-  /// Голос — зажатие; видео — одно нажатие (без полоски 0…20 с).
-  void _onTap() {
-    if (_recording) return;
-    if (_mode == MediaStripMode.video) {
-      HapticFeedback.mediumImpact();
-      widget.onRecordStart(MediaStripMode.video);
-      return;
-    }
-    _toggleMode();
-  }
-
   void _start(LongPressStartDetails _) {
-    if (_mode == MediaStripMode.video) {
-      // видео не через hold — иначе таймер «залипает» на 20 с
-      return;
-    }
     HapticFeedback.mediumImpact();
     setState(() {
       _recording = true;
       _started = DateTime.now();
       _elapsedMs = 0;
     });
-    widget.onRecordStart(MediaStripMode.voice);
+    widget.onRecordStart(_mode);
     _tick?.cancel();
     _tick = Timer.periodic(const Duration(milliseconds: 200), (_) {
       if (!_recording || _started == null) return;
       final ms = DateTime.now().difference(_started!).inMilliseconds;
       if (!mounted) return;
       setState(() => _elapsedMs = ms);
-      if (ms >= _maxVoiceMs) _stop(send: true);
+      if (ms >= _maxMs) _stop(send: true);
     });
   }
 
-  void _end(LongPressEndDetails _) {
-    if (_mode == MediaStripMode.video) return;
-    _stop(send: true);
-  }
+  void _end(LongPressEndDetails _) => _stop(send: true);
 
   void _stop({required bool send}) {
     if (!_recording) return;
     _tick?.cancel();
     _tick = null;
-    if (mounted) setState(() => _recording = false);
-    _started = null;
-    _elapsedMs = 0;
+    final mode = _mode;
+    if (mounted) {
+      setState(() {
+        _recording = false;
+        _started = null;
+        _elapsedMs = 0;
+      });
+    }
     if (send) {
-      widget.onRecordEnd(MediaStripMode.voice);
+      widget.onRecordEnd(mode);
     } else {
-      widget.onRecordCancel(MediaStripMode.voice);
+      widget.onRecordCancel(mode);
     }
   }
 
@@ -104,20 +94,22 @@ class _ChatMediaStripState extends State<ChatMediaStrip> {
   Widget build(BuildContext context) {
     final onSurf = Theme.of(context).colorScheme.onSurface;
     final sec = (_elapsedMs / 1000).floor();
+    final maxSec = _mode == MediaStripMode.voice ? 60 : 20;
 
     final String label;
     if (_recording) {
-      label = 'Голос · $sec / 60 с';
-    } else if (_mode == MediaStripMode.voice) {
-      label = 'Голос';
+      label = _mode == MediaStripMode.voice
+          ? 'Голос · $sec / $maxSec с'
+          : 'Видео · $sec / $maxSec с';
     } else {
-      label = 'Видео';
+      label = _mode == MediaStripMode.voice ? 'Голос' : 'Видео';
     }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
       child: GestureDetector(
-        onTap: _onTap,
+        behavior: HitTestBehavior.opaque,
+        onTap: _recording ? null : _toggleMode,
         onLongPressStart: _start,
         onLongPressEnd: _end,
         onLongPressCancel: () {
