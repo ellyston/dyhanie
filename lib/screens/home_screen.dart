@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +15,10 @@ import '../services/locale_service.dart';
 import '../services/incoming_call_service.dart';
 import '../services/unread_chats_service.dart';
 import '../services/transport_mode_service.dart';
+import '../services/push/app_badge_aggregator.dart';
+import '../services/push/push_token_service.dart';
+import '../services/push/push_message_handler.dart';
+import '../services/system_incoming_call/system_incoming_call.dart';
 
 import 'auto_lock_settings_screen.dart';
 import 'chats_screen.dart';
@@ -46,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _inviteSub;
   StreamSubscription? _msgSignalSub;
   StreamSubscription? _unreadSub;
+  StreamSubscription? _pushEventsSub;
 
   @override
   void initState() {
@@ -70,6 +76,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  void listenPushEvents() {
+    const events = EventChannel('su.dyhanie/push_events');
+    events.receiveBroadcastStream().listen((e) {
+      if (e is Map) {
+        PushMessageHandler.instance.handle(Map<String, dynamic>.from(e));
+      }
+    });
   }
 
   void _joinRoom() {
@@ -113,11 +128,19 @@ class _HomeScreenState extends State<HomeScreen> {
       username = name;
       avatarBytes = bytes;
     });
+    
     if (name.isNotEmpty) {
       IncomingCallService.instance.attach(
         navKey: appNavigatorKey,
         myUsername: name,
       );
+      // когда заведёте фасад:
+      SystemIncomingCall.instance.attach(
+        navKey: appNavigatorKey,
+        myUsername: name,
+      );
+      AppBadgeAggregator.instance.start();
+      unawaited(PushTokenService.instance.registerWithServer());
     }
     _startBadgeListeners(name);
     if (name.isNotEmpty) {
@@ -136,11 +159,23 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+    // один раз за жизнь State
+    _pushEventsSub?.cancel();
+    _pushEventsSub = const EventChannel('su.dyhanie/push_events')
+        .receiveBroadcastStream()
+        .listen((e) {
+      if (e is Map) {
+        unawaited(
+          PushMessageHandler.instance.handle(Map<String, dynamic>.from(e)),
+        );
+      }
+    });
   }
 
   void _recalcBadge() {
     if (!mounted) return;
     setState(() => contactsBadge = _inviteCount + _msgSignalCount);
+    AppBadgeAggregator.instance.setContactsBadge(contactsBadge);
   }
 
   Future<void> _refreshInviteBadge() async {
@@ -199,12 +234,18 @@ class _HomeScreenState extends State<HomeScreen> {
     _inviteSub?.cancel();
     _msgSignalSub?.cancel();
     _unreadSub?.cancel();
+    _pushEventsSub?.cancel();
+    AppBadgeAggregator.instance.stop();
     IncomingCallService.instance.detach();
+    SystemIncomingCall.instance.detach();
     super.dispose();
   }
 
   void _logout() {
+    unawaited(AppBadgeAggregator.instance.clearAll());
+    AppBadgeAggregator.instance.stop();
     IncomingCallService.instance.detach();
+    SystemIncomingCall.instance.detach();
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => const WelcomeScreen(goHomeOnContinue: true),
